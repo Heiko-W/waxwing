@@ -26,6 +26,7 @@ function conn(id: string): ConnectedSession {
     delegated: [],
     username: id,
     method: 'basic',
+    offline: false,
   }
 }
 

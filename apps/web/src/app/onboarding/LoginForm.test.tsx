@@ -97,6 +97,10 @@ describe('LoginForm', () => {
 
     const oauth = screen.getByRole('button', { name: 'Sign in' })
     expect(oauth).toHaveAttribute('aria-disabled', 'true')
+    // The appearance half, added after the same gap was found offline: this call site is where the
+    // bare-`aria-disabled` pattern came from, so it had the identical defect — a button that says
+    // it cannot act and renders exactly like one that can.
+    expect(oauth.className).toMatch(/unavailable/)
     expect(
       screen.getByText(/Signing in through the server needs an HTTPS connection/),
     ).toBeInTheDocument()
@@ -438,5 +442,141 @@ describe('what the sign-in promises about this device', () => {
     await user.click(screen.getByLabelText('Public or shared computer'))
     expect(screen.queryByText(/reloading it or closing the tab/i)).not.toBeInTheDocument()
     expect(screen.getByText(/Keeps no mail and no sign-in on this device/i)).toBeInTheDocument()
+  })
+})
+
+/**
+ * Offline no sign-in can leave the machine (FR-OFF-01). This became a normal screen to arrive at
+ * with the offline cold start: a device with no stored session, opened on a train, now lands on
+ * the sign-in step for the server it last used rather than on a server-entry dialog — and that
+ * step has to say what it can do instead of failing on the press.
+ */
+describe('LoginForm — offline', () => {
+  const base = {
+    target,
+    productName: 'Acme Mail',
+    canEditServer: false,
+    busy: false,
+    offline: true,
+  } as const
+
+  it('the OAuth button says the reason it cannot act, and does not act', async () => {
+    const user = userEvent.setup()
+    const onOAuth = vi.fn()
+    render(
+      <LoginForm
+        {...base}
+        methods={['oauth', 'basic']}
+        oauthAvailable
+        onOAuth={onOAuth}
+        onBasicSubmit={vi.fn()}
+      />,
+    )
+
+    const oauth = screen.getByRole('button', { name: 'Sign in' })
+    expect(oauth).toHaveAttribute('aria-disabled', 'true')
+    // And it LOOKS unavailable. A bare `aria-disabled` left it in full primary blue — the claim
+    // reached a screen reader and nothing else.
+    expect(oauth.className).toMatch(/unavailable/)
+    // The offline sentence REPLACES the "you sign in on the server itself" explanation rather than
+    // joining it: that one describes a redirect that is not going to happen.
+    expect(screen.getByText(/offline/i)).toBeInTheDocument()
+    expect(screen.queryByText(/You sign in on mail\.example\.com itself/)).toBeNull()
+
+    await user.click(oauth)
+    expect(onOAuth).not.toHaveBeenCalled()
+  })
+
+  it('offline outranks the insecure-origin note — one is fixable today, the other is not', () => {
+    render(
+      <LoginForm
+        {...base}
+        methods={['oauth', 'basic']}
+        oauthAvailable={false}
+        onOAuth={vi.fn()}
+        onBasicSubmit={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(/offline/i)).toBeInTheDocument()
+    expect(screen.queryByText(/needs an HTTPS connection/)).toBeNull()
+  })
+
+  it('the password form does not submit — not from the button, not from Return', async () => {
+    const user = userEvent.setup()
+    const onBasicSubmit = vi.fn()
+    render(
+      <LoginForm
+        {...base}
+        methods={['basic']}
+        oauthAvailable={false}
+        onOAuth={vi.fn()}
+        onBasicSubmit={onBasicSubmit}
+      />,
+    )
+
+    await user.type(screen.getByLabelText('Username', { exact: true }), 'alice')
+    const password = screen.getByLabelText('Password')
+    await user.type(password, 'pw')
+    await user.click(screen.getByRole('button', { name: 'Sign in with a password' }))
+    await user.type(password, '{Enter}')
+
+    expect(onBasicSubmit).not.toHaveBeenCalled()
+    const submit = screen.getByRole('button', { name: 'Sign in with a password' })
+    expect(submit).toHaveAttribute('aria-disabled', 'true')
+    expect(submit.className).toMatch(/unavailable/)
+    const noteId = submit.getAttribute('aria-describedby')
+    expect(document.getElementById(noteId as string)).toBeVisible()
+  })
+
+  it('states it ONCE when both methods are on screen', () => {
+    render(
+      <LoginForm
+        {...base}
+        methods={['basic', 'oauth']}
+        oauthAvailable
+        onOAuth={vi.fn()}
+        onBasicSubmit={vi.fn()}
+      />,
+    )
+
+    // Basic ranks first, so the password form is open AND the OAuth button is present: both
+    // controls are unavailable for the same reason, and the screen says so in one place.
+    expect(screen.getAllByText(/offline/i)).toHaveLength(1)
+    const submit = screen.getByRole('button', { name: 'Sign in with a password' })
+    // …which is the note the password button points at, so nothing dangles.
+    const noteId = submit.getAttribute('aria-describedby') as string
+    expect(document.getElementById(noteId)?.textContent ?? '').toMatch(/offline/i)
+  })
+
+  it('says nothing at all while connected', () => {
+    render(
+      <LoginForm
+        {...base}
+        offline={false}
+        methods={['oauth', 'basic']}
+        oauthAvailable
+        onOAuth={vi.fn()}
+        onBasicSubmit={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText(/offline/i)).toBeNull()
+    const oauth = screen.getByRole('button', { name: 'Sign in' })
+    expect(oauth).not.toHaveAttribute('aria-disabled')
+    expect(oauth.className).not.toMatch(/unavailable/)
+  })
+
+  it('has no accessibility violations', async () => {
+    const { container } = render(
+      <LoginForm
+        {...base}
+        methods={['oauth', 'basic']}
+        oauthAvailable
+        onOAuth={vi.fn()}
+        onBasicSubmit={vi.fn()}
+      />,
+    )
+    await expectNoA11yViolations(container)
   })
 })

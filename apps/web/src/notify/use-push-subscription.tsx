@@ -20,6 +20,7 @@ import { type ReactNode, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useConfig } from '../app/config-context'
 import { useSession } from '../app/session/context'
+import { useOnline } from '../app/use-online'
 import { useLocalPref } from '../sync'
 import { useBackgroundPushSupport } from './capability'
 import {
@@ -52,6 +53,10 @@ export function PushSubscriptionHost({ children }: { children?: ReactNode }): Re
   const config = useConfig()
   const { t } = useTranslation()
   const permission = useNotificationPermission()
+  // Reconciling is a run of authenticated JMAP writes; with no network every one of them fails.
+  // Rare before FR-OFF-01's offline cold start, normal after it — the host now mounts with a full
+  // session and no server behind it. Reactive, so the pass runs the moment there IS one.
+  const online = useOnline()
   const serverSupports = useBackgroundPushSupport()
   // Answer the worker's "would you raise the live banner?" probe (R-42). Here rather than in a
   // component of its own because this is the one place already mounted for exactly as long as a tab
@@ -104,6 +109,7 @@ export function PushSubscriptionHost({ children }: { children?: ReactNode }): Re
         prefsLoaded,
         permission: permissionState,
         serverSupports,
+        online,
         // Exactly what the live channel says with preview OFF — the wording a closed-app banner
         // falls back to whenever the push carries nothing (ADR-017 and its 2026-08-21 amendment).
         // Both paths use one wording, so there is nothing here to drift.
@@ -143,6 +149,7 @@ export function PushSubscriptionHost({ children }: { children?: ReactNode }): Re
     prefsLoaded,
     permissionState,
     serverSupports,
+    online,
     client,
     session,
     productName,

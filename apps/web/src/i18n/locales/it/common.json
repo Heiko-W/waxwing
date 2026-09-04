@@ -39,6 +39,7 @@
   },
   "onboarding": {
     "welcome": "Ti diamo il benvenuto in {{product}}",
+    "offline": "Sei offline. L’accesso richiede una connessione: appena ce n’è una, la tua posta torna qui.",
     "connect": {
       "title": "Connettiti alla tua casella di posta",
       "label": "Indirizzo email o server",

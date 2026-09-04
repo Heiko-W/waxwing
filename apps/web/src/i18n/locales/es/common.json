@@ -39,6 +39,7 @@
   },
   "onboarding": {
     "welcome": "Le damos la bienvenida a {{product}}",
+    "offline": "Está sin conexión. Iniciar sesión requiere conexión: en cuanto la haya, su correo volverá a estar aquí.",
     "connect": {
       "title": "Conectar con su buzón",
       "label": "Dirección de correo o servidor",

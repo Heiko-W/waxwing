@@ -63,6 +63,38 @@ export async function getSession(
 }
 
 /**
+ * The same Session, from a client-side store rather than from the network (FR-OFF-01).
+ *
+ * An installed app opened with no network can rebuild a working `JmapClient` from a Session
+ * it kept from the last connect — that is the whole of the offline cold start. What it must NOT do
+ * is trust that stored value more than it trusts a response, and this function is why it does not:
+ * a document that never came through {@link getSession} would otherwise skip both of the checks
+ * that make a Session usable at all.
+ *
+ * Both are re-run here, against `input` exactly as if it had just been fetched from it:
+ *
+ *  - the SHAPE check, because a truncated or foreign value in the store must fail loudly here
+ *    rather than as a `TypeError` from somewhere that had every reason to assume a Session;
+ *  - the ORIGIN check, because `apiUrl`/`downloadUrl`/`uploadUrl`/`eventSourceUrl` are where the
+ *    `Authorization` header goes. Anything that can write to the store could otherwise nominate a
+ *    host and be handed the credential on the first request after the network returns — a stored
+ *    document is one round trip further from the server than a response, never one closer.
+ *
+ * Throws exactly what {@link getSession} throws: {@link JmapError} for a malformed document,
+ * {@link JmapSessionOriginError} for a URL that has moved origin. A caller restoring a session
+ * treats either as "there is no usable stored session" and signs in normally.
+ */
+export function sessionFromStore(value: unknown, input: string): Session {
+  const url = toWellKnownUrl(input)
+  if (!isSessionShape(value)) {
+    throw new JmapError(
+      'Malformed stored JMAP session: expected { apiUrl, downloadUrl, uploadUrl, eventSourceUrl, … } (RFC 8620 §2)',
+    )
+  }
+  return normalizeSession(value, url, connectionOrigin(url))
+}
+
+/**
  * The minimum a Session must look like to be usable at all: the four URL templates, as strings.
  *
  * `capabilities` and `accounts` are REQUIRED by RFC 8620 §2 and are deliberately NOT required here

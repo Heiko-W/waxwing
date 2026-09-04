@@ -13,7 +13,12 @@
  */
 
 import type { AuthProvider, JmapClient, MailAccount } from '@waxwing/jmap'
-import { httpStatusOf, JmapSessionOriginError, secondaryMailAccounts } from '@waxwing/jmap'
+import {
+  httpStatusOf,
+  JmapSessionOriginError,
+  secondaryMailAccounts,
+  sessionFromStore,
+} from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { AuthController } from '../../auth'
 import { AuthConfigError, AuthExpiredError, OAuthCallbackError, wipeWebStorage } from '../../auth'
@@ -24,6 +29,7 @@ import { resetMailScopedStores, useActiveAccountStore } from '../../mail/active-
 import { closeAllNotifications } from '../../notify'
 import { tearDownPushSubscription } from '../../notify/push-subscribe'
 import { getPushRegistration } from '../../notify/registration'
+import type { AreaAccess } from '../../sharing/probe'
 import { probeSharedAreas } from '../../sharing/probe'
 import {
   currentReplicaName,
@@ -49,7 +55,13 @@ import {
   type SessionAction,
 } from './reducer'
 import { InvalidTargetError, pinnedTarget, resolveManualTarget, sameOriginTarget } from './target'
-import type { ConnectedSession, ConnectTarget, OnboardError, SessionContextValue } from './types'
+import type {
+  ConnectedSession,
+  ConnectTarget,
+  JmapSession,
+  OnboardError,
+  SessionContextValue,
+} from './types'
 import { reauthProvider } from './withReauth'
 
 const JMAP_MAIL = 'urn:ietf:params:jmap:mail'
@@ -255,6 +267,30 @@ function errToOnboard(error: unknown, host?: string, basic = false): OnboardErro
 }
 
 /**
+ * Is this connect failure the one the stored Session document exists for (FR-OFF-01)?
+ *
+ * Both halves are load-bearing.
+ *
+ * A failed `fetch` is a `TypeError` and nothing else here is: every answer the server actually
+ * SENT arrives as a status-carrying error (see {@link errToOnboard}), so a `TypeError` means the
+ * request never got an answer at all.
+ *
+ * And the device has to say it has no network. This is the deliberate narrow reading, and the
+ * wide one was rejected: with a `TypeError` while the browser believes it is ONLINE — a captive
+ * portal, a server that is down, a mistyped host that used to work — the honest answer is the one
+ * the app already gives, "Could not reach {{host}}", because that is a problem the reader can act
+ * on. Opening a read-only replica instead would hide a fixable fault behind a working-looking app,
+ * and there would be no `online` event coming to end it. `navigator.onLine` is a floor rather than
+ * a guarantee (`app/use-online.ts`) — it can say "online" wrongly, which is the case excluded
+ * here, and it does not say "offline" wrongly.
+ */
+function isOfflineFailure(error: unknown): boolean {
+  return (
+    error instanceof TypeError && typeof navigator !== 'undefined' && navigator.onLine === false
+  )
+}
+
+/**
  * OAuth failures specifically, because one of them is not a failure the reader caused.
  *
  * The sign-in screen offers whatever `config.server.auth` lists — the SERVER is never asked. So on
@@ -386,6 +422,52 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
     })
   }, [])
 
+  /**
+   * A live {@link JmapClient} plus the probe's verdicts → the {@link ConnectedSession} the shell
+   * renders. Shared by the two ways of arriving at a client: a connect over the network, and the
+   * offline cold start that rebuilds one from the stored Session document (FR-OFF-01).
+   *
+   * It exists so those two cannot drift. The one thing they legitimately differ on is `verdicts`
+   * — offline there is nobody to ask, so the map is empty, and `deriveDelegation` reads an absent
+   * verdict as "granted everywhere". That is not a shortcut taken here: it is the rule
+   * `sharing/probe.ts` already states for a probe that did not answer, because a rail that empties
+   * itself when the network drops is worse than one showing a section that turns out to be empty.
+   */
+  const materializeSession = useCallback(
+    (
+      client: JmapClient,
+      method: ConnectedSession['method'],
+      verdicts: ReadonlyMap<string, AreaAccess>,
+      offline: boolean,
+    ): ConnectedSession => {
+      const jmapSession = client.session
+      const accountId = jmapSession.primaryAccounts[JMAP_MAIL]
+      if (accountId === undefined) throw new NoAccountError()
+      // Lift EVERY account this session grants into the model (M4.4): the user's own account
+      // first, then any delegated/shared one.
+      const own = jmapSession.accounts[accountId]
+      const primary: MailAccount = {
+        id: accountId,
+        name: own?.name ?? (jmapSession.username || accountId),
+        isPersonal: own?.isPersonal ?? true,
+        isReadOnly: own?.isReadOnly ?? false,
+      }
+      const advertised = secondaryMailAccounts(jmapSession, accountId)
+      const { accounts, delegated } = deriveDelegation(primary, advertised, verdicts)
+      return {
+        client,
+        jmapSession,
+        accountId,
+        accounts,
+        delegated,
+        username: jmapSession.username || accountId,
+        method,
+        offline,
+      }
+    },
+    [],
+  )
+
   const connectSession = useCallback(
     async (
       controller: AuthController,
@@ -410,16 +492,20 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
       // `restore()` returns null and no reconnect ever consults this key; `endSession` reads
       // `targetRef`.
       if (!ephemeralRef.current) writeStored(local(), DURABLE_TARGET_KEY, target)
-      // Lift EVERY account this session grants into the model (M4.4): the user's own account
-      // first, then any delegated/shared one.
-      const own = jmapSession.accounts[accountId]
-      const primary: MailAccount = {
-        id: accountId,
-        name: own?.name ?? (jmapSession.username || accountId),
-        isPersonal: own?.isPersonal ?? true,
-        isReadOnly: own?.isReadOnly ?? false,
-      }
-      const advertised = secondaryMailAccounts(jmapSession, accountId)
+      /*
+       * The Session document goes to the credential store, so the next cold start has something to
+       * open when there is no network (FR-OFF-01, ADR-041).
+       *
+       * Not awaited for its own sake and never allowed to fail a sign-in: what it buys is an
+       * offline cold start, and a store that would not take it is not a reason to refuse a session
+       * the user is already holding. The controller decides whether to write at all — no
+       * AuthRecord, no document — so "stay signed in" unticked and public-computer mode keep
+       * persisting nothing, which is what they promise.
+       *
+       * NOT the service-worker cache, whose invariant is zero bytes from JMAP (sw-routes.ts), and
+       * not the replica, which outlives a plain sign-out and is shared across accounts.
+       */
+      void controller.rememberJmapSession(target.connectUrl, jmapSession).catch(() => undefined)
       /*
        * ASK, once, before anything is built on the answer (S-4).
        *
@@ -435,22 +521,69 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
        * shared — `probeSharedAreas` sends nothing for an empty list, so the overwhelmingly common
        * single-account sign-in costs exactly what it did before.
        */
+      const advertised = secondaryMailAccounts(jmapSession, accountId)
       const verdicts = await probeSharedAreas(
         client,
         advertised.map((account) => account.id),
       )
-      const { accounts, delegated } = deriveDelegation(primary, advertised, verdicts)
-      return {
-        client,
-        jmapSession,
-        accountId,
-        accounts,
-        delegated,
-        username: jmapSession.username || accountId,
-        method,
-      }
+      return materializeSession(client, method, verdicts, false)
     },
-    [services, reportAuthExpired],
+    [services, reportAuthExpired, materializeSession],
+  )
+
+  /**
+   * The offline cold start (FR-OFF-01, R-78): the session the device already has, without a server.
+   *
+   * `restore()` has succeeded and the connect has not, so the credentials are here and the Session
+   * document is not. This rebuilds the client from the copy stored beside those credentials at the
+   * last successful connect, and hands back a session marked {@link ConnectedSession.offline} —
+   * everything downstream then behaves exactly as it does when a live session loses its network,
+   * which is a state this app already models end to end (the header's "Offline", the outbox, the
+   * `unavailableReason` on the screens that write straight to JMAP).
+   *
+   * `null` when there is nothing usable: no stored document, one for a different server, or one
+   * whose URLs have moved origin. Each of those returns the caller to the sign-in form, which is
+   * where this path started before it existed.
+   */
+  const restoreOfflineSession = useCallback(
+    async (
+      controller: AuthController,
+      target: ConnectTarget,
+      method: ConnectedSession['method'],
+    ): Promise<ConnectedSession | null> => {
+      const stored = await controller.recallJmapSession().catch(() => null)
+      if (stored === null) return null
+      // It has to be a document for the server this boot is FOR, and "the server" is the whole
+      // connect URL rather than its origin. `fallbackTarget()` reads a value out of `localStorage`
+      // that a manual "different server" can have changed since, and a pinned `sessionUrl` is an
+      // operator-editable path — two deployments on one origin are two servers. The origin half is
+      // checked a second time, and by the module that owns that check, in `sessionFromStore`.
+      if (stored.connectUrl !== target.connectUrl) return null
+      let client: JmapClient
+      let connected: ConnectedSession
+      const provider = reauthProvider(controller.getAuthProvider(), reportAuthExpired)
+      try {
+        // Re-validated as if it had just been fetched — shape AND origin. See `sessionFromStore`:
+        // the four URLs are where the `Authorization` header goes, and a document out of a store
+        // has to earn that the same way a response does.
+        const jmapSession: JmapSession = sessionFromStore(stored.document, target.connectUrl)
+        client = services.clientFromSession(jmapSession, provider, target.connectUrl)
+        // No probe, hence no verdicts: see `materializeSession`.
+        connected = materializeSession(client, method, new Map(), true)
+      } catch {
+        // Everything in this block is "is the stored document usable" — a malformed one, a
+        // relocated one, one with no mail account left in it. All three answer `null` and let the
+        // caller re-raise the CONNECT failure, so the message on the sign-in form stays the true
+        // one ("could not reach the server") rather than a verdict about a file nobody can see.
+        return null
+      }
+      clientRef.current = client
+      authProviderRef.current = provider
+      controllerRef.current = controller
+      targetRef.current = target
+      return connected
+    },
+    [services, reportAuthExpired, materializeSession],
   )
 
   const goToLogin = useCallback(
@@ -537,9 +670,26 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         // A restored session only exists because it was persisted (Basic = opt-in "stay signed
         // in"), so keep it durable across a later re-auth (FR-AUTH-04).
         if (restored.method === 'basic') basicStayRef.current = true
-        const connected = await connectSession(activeController, bootTarget, restored.method)
-        dispatch({ type: 'connected', connected })
-        return
+        try {
+          const connected = await connectSession(activeController, bootTarget, restored.method)
+          dispatch({ type: 'connected', connected })
+          return
+        } catch (error) {
+          /*
+           * THE OFFLINE COLD START (FR-OFF-01, R-78). The half `restore()` could never finish.
+           *
+           * `restore()` has just succeeded — it only reads the encrypted store — and the connect
+           * has not, because there is no network. Everything the app needs is on this device: the
+           * credentials, the replica, and (since ADR-041) the Session document. Before this, that
+           * combination produced the sign-in form with "Could not reach the server" on it, offering
+           * a form that cannot be submitted offline in front of a mailbox that was fully there.
+           */
+          if (!isOfflineFailure(error)) throw error
+          const offline = await restoreOfflineSession(activeController, bootTarget, restored.method)
+          if (offline === null) throw error
+          dispatch({ type: 'connected', connected: offline })
+          return
+        }
       }
 
       // C. Choose the onboarding entry.
@@ -552,11 +702,33 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         return
       }
       const present = await services.probe(window.location.origin)
-      if (present) {
+      if (present === 'present') {
         goToLogin(sameOriginTarget(window.location.origin))
-      } else {
-        dispatch({ type: 'showConnect' })
+        return
       }
+      if (present === 'absent') {
+        dispatch({ type: 'showConnect' })
+        return
+      }
+      /*
+       * THE PROBE GOT NO ANSWER, WHICH IS NOT THE SAME AS "NO SERVER HERE".
+       *
+       * Offline — the case FR-OFF-01 is about — nothing can answer, and the old code read that
+       * silence as absence and opened the manual server-entry step. So the one reader who cannot
+       * possibly act on it (no session to restore, and no network to reach whatever they type) got
+       * the most technical screen this app has, asking for a value it could not have checked.
+       *
+       * The last server this browser actually used is a measurement; the silence is not. Prefer it,
+       * and fall back to the server-entry step only when there is nothing to prefer — a genuinely
+       * first launch with no connection, where the app has nothing true to say beyond what the
+       * form itself now says (its Continue button carries the offline reason, `ConnectForm`).
+       */
+      const durable = readStored<ConnectTarget>(local(), DURABLE_TARGET_KEY)
+      if (durable && typeof durable.connectUrl === 'string' && durable.connectUrl !== '') {
+        goToLogin(durable)
+        return
+      }
+      dispatch({ type: 'showConnect' })
     } catch (error) {
       /*
        * NAMED, even when the message on screen cannot name it (U2).
@@ -590,7 +762,16 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
       }
       goToLogin(callbackTarget ?? targetRef.current ?? fallbackTarget(), errToOnboard(error))
     }
-  }, [config, ensureController, connectSession, goToLogin, fallbackTarget, services, markEphemeral])
+  }, [
+    config,
+    ensureController,
+    connectSession,
+    restoreOfflineSession,
+    goToLogin,
+    fallbackTarget,
+    services,
+    markEphemeral,
+  ])
 
   // Boot exactly once. The ref guard is load-bearing: React 19 StrictMode double-invokes the
   // effect, and `completeRedirect()` consumes the single-use PKCE transaction, so a second run
@@ -600,6 +781,51 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
     bootedRef.current = true
     void boot()
   }, [boot])
+
+  /**
+   * The other end of the offline cold start: reach the server the moment there is one.
+   *
+   * A session built from the stored document has never spoken to this server in this page load,
+   * so everything derived from the Session document is as old as the document — the account list,
+   * the delegated shares, the chunking limits, and the opaque `state` that says whether any of
+   * that still holds. That is fine while there is no network and wrong the second there is.
+   *
+   * It re-runs the WHOLE connect rather than `client.refreshSession()`, and the difference is the
+   * point: `refreshSession()` swaps the document inside the client and leaves `connected.accounts`
+   * and `connected.delegated` — the two lists the sidebar and the engine fleet actually read —
+   * exactly as stale as they were. A full connect re-fetches, re-probes the shares, re-derives
+   * both, rewrites the stored document, and answers "this account is gone" the same way a fresh
+   * sign-in does. The fleet is already built to be torn down and rebuilt on a new `connected`
+   * (`sync/engine/react.tsx`), which is the same lifecycle a re-auth uses.
+   *
+   * A failure is not reported. The reader is looking at their mail, offline is a state this app
+   * says out loud in the header already, and "we tried and it did not work" is not news to
+   * somebody whose train is in a tunnel. The next `online` event tries again.
+   */
+  const offlineConnected = state.status === 'ready' && state.connected.offline
+  const offlineMethod = state.status === 'ready' ? state.connected.method : null
+  const resumingRef = useRef(false)
+  useEffect(() => {
+    if (!offlineConnected || offlineMethod === null) return
+    const resume = () => {
+      const controller = controllerRef.current
+      const target = targetRef.current
+      if (!controller || !target || resumingRef.current) return
+      resumingRef.current = true
+      void (async () => {
+        try {
+          const connected = await connectSession(controller, target, offlineMethod)
+          dispatch({ type: 'reconnected', connected })
+        } catch (error) {
+          console.info('[waxwing] the server is still out of reach', error)
+        } finally {
+          resumingRef.current = false
+        }
+      })()
+    }
+    window.addEventListener('online', resume)
+    return () => window.removeEventListener('online', resume)
+  }, [offlineConnected, offlineMethod, connectSession])
 
   const submitConnect = useCallback(
     (input: string) => {

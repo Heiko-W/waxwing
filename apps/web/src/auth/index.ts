@@ -41,6 +41,7 @@ export type {
   LogoutOptions,
   OAuthConfig,
   StartLoginResult,
+  StoredJmapSession,
 } from './types'
 export type { WipeEnvironment } from './wipe'
 export { wipeLocalData, wipeWebStorage } from './wipe'

@@ -38,6 +38,7 @@ import type {
   LogoutOptions,
   OAuthConfig,
   StartLoginResult,
+  StoredJmapSession,
 } from './types'
 import { type WipeEnvironment, wipeLocalData } from './wipe'
 
@@ -201,6 +202,12 @@ export class AuthController {
       // "stay signed in" unticked. Here the store must work anyway — that is what the tick asked
       // for — so a failure is the sign-in's failure and is reported as one.
       await this.tokens.clear()
+      // And the JMAP session document of whoever was here before, on the same lines and for the
+      // same reason (FR-OFF-01). It names an account and an accountId; left behind, the next
+      // offline cold start would rebuild a client for the PREVIOUS user's mailbox and hand it
+      // THESE credentials. The window is real: a sign-in whose `connectSession` then fails leaves
+      // the new record on disk with the old document beside it.
+      await this.store.delete(SecretName.JmapSession)
       await this.store.put(SecretName.BasicCredentials, JSON.stringify(credentials))
       await this.store.put(
         SecretName.AuthRecord,
@@ -224,6 +231,7 @@ export class AuthController {
       await this.tokens.clear().catch(() => undefined)
       await this.store.delete(SecretName.BasicCredentials).catch(() => undefined)
       await this.store.delete(SecretName.AuthRecord).catch(() => undefined)
+      await this.store.delete(SecretName.JmapSession).catch(() => undefined)
     }
     // AFTER the store work, not before it. Set first, a login that reported failure still left
     // `getSession()` answering with a live Basic session — the app said "signed out" and the
@@ -276,6 +284,12 @@ export class AuthController {
       // AuthRecord overwritten below — but it is still decryptable on this device and still valid
       // at the server, which is the half that matters.
       await this.store.delete(SecretName.BasicCredentials)
+      // And the previous identity's JMAP session document (FR-OFF-01) — same reasoning as in
+      // `startBasicLogin`: it names an account, and an offline cold start would rebuild a client
+      // for it out of credentials that now belong to someone else. Outside the `ephemeral` guard
+      // below on purpose: a public-computer session must not leave one either, and it is the
+      // absence of an AuthRecord that stops `rememberJmapSession` writing a new one.
+      await this.store.delete(SecretName.JmapSession)
       // The AuthRecord is what `restore()` keys off on a cold start. Writing one for a
       // public-computer session would sign the NEXT person at this machine in as this user, which
       // is the failure the mode exists to prevent (FR-AUTH-09).
@@ -489,6 +503,47 @@ export class AuthController {
       return JSON.parse(raw) as AuthRecord
     } catch {
       // A corrupted record is not a reason to fail a refresh differently from a missing one.
+      return null
+    }
+  }
+
+  /**
+   * Keep the JMAP Session document beside the credentials it belongs to (FR-OFF-01).
+   *
+   * **The guard is the whole point, not a nicety.** A document is only ever usable together with
+   * a {@link restore}, and {@link restore} needs an `AuthRecord`. Without one — Basic with "stay
+   * signed in" unticked, a public-computer OAuth session — nothing can ever read this back, so
+   * writing it would leave a username and a server on the disk of a machine where the user asked
+   * for the opposite and got it everywhere else. So: no record, no document, silently.
+   *
+   * Every path that establishes a NEW identity deletes the old document on the same lines that
+   * write the new `AuthRecord` ({@link startBasicLogin}, {@link completeRedirect}), and
+   * {@link logout} destroys the whole database. That is what makes "the stored document belongs
+   * to the stored credentials" structural rather than remembered.
+   */
+  async rememberJmapSession(connectUrl: string, document: unknown): Promise<void> {
+    if ((await this.readAuthRecord()) === null) return
+    const stored: StoredJmapSession = { connectUrl, document, storedAt: this.now() }
+    await this.store.put(SecretName.JmapSession, JSON.stringify(stored))
+  }
+
+  /**
+   * The stored JMAP Session document, or `null` when there is none (or it is unreadable).
+   *
+   * Returns the envelope UNVALIDATED — `document` is `unknown` on purpose. Whether that value is
+   * a usable Session is a JMAP question, and `@waxwing/jmap`'s `sessionFromStore` is the one
+   * place that answers it (shape + the origin check that keeps the `Authorization` header on the
+   * configured host). Answering it here would be a second copy of a security check.
+   */
+  async recallJmapSession(): Promise<StoredJmapSession | null> {
+    const raw = await this.store.get(SecretName.JmapSession)
+    if (!raw) return null
+    try {
+      const parsed = JSON.parse(raw) as StoredJmapSession
+      return typeof parsed?.connectUrl === 'string' ? parsed : null
+    } catch {
+      // Corrupt is missing. An offline cold start then shows the sign-in form, which is what it
+      // did before this existed.
       return null
     }
   }

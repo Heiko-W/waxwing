@@ -76,6 +76,25 @@ export interface LogoutOptions {
 }
 
 /**
+ * What {@link AuthController.rememberJmapSession} keeps so a cold start with no network can
+ * rebuild a JMAP client (FR-OFF-01), and {@link AuthController.recallJmapSession} hands back.
+ *
+ * Deliberately three fields and no more. `document` is the RFC 8620 Session verbatim — no token
+ * and no mail, and it is what the client needs in full (the four URLs, the accounts, the
+ * capability limits the chunker reads). `connectUrl` is what it was fetched THROUGH, which the
+ * restored client needs for `refreshSession()` and the restoring caller needs to check it is
+ * still talking to the same server. `storedAt` is for a human reading a bug report.
+ */
+export interface StoredJmapSession {
+  /** The `connect()` input the document came from — an origin or a well-known URL. */
+  readonly connectUrl: string
+  /** The RFC 8620 Session object, exactly as the server sent it. Never a credential. */
+  readonly document: unknown
+  /** When it was written (epoch ms). */
+  readonly storedAt: number
+}
+
+/**
  * A typed snapshot of the active session. `authProvider` is injected into the JMAP client;
  * for OAuth it is `bearer(() => accessToken)` and transparently refreshes.
  */

@@ -39,6 +39,7 @@
   },
   "onboarding": {
     "welcome": "欢迎使用{{product}}",
+    "offline": "您当前处于离线状态。登录需要网络连接，连接恢复后邮件会再次显示。",
     "connect": {
       "title": "连接到您的邮箱",
       "label": "电子邮件地址或服务器",

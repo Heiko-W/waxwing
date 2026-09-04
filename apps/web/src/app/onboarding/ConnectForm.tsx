@@ -11,6 +11,13 @@ export interface ConnectFormProps {
   readonly initialValue?: string
   readonly busy: boolean
   readonly error?: OnboardError
+  /**
+   * The device has no connection, so nothing typed here can be checked (FR-OFF-01).
+   *
+   * A prop rather than a `useOnline()` call, because this component's contract is that it holds no
+   * logic of its own — the parent owns connectivity exactly as it owns discovery.
+   */
+  readonly offline?: boolean
   /** Raw email/server string; the parent resolves it into a target (FR-AUTH-02). */
   readonly onSubmit: (emailOrServer: string) => void
 }
@@ -26,6 +33,7 @@ export function ConnectForm({
   initialValue,
   busy,
   error,
+  offline = false,
   onSubmit,
 }: ConnectFormProps) {
   const { t } = useTranslation()
@@ -36,10 +44,14 @@ export function ConnectForm({
   const hintId = `${id}-hint`
   const errorId = `${id}-error`
   const headingId = `${id}-heading`
+  const offlineId = `${id}-offline`
   const describedBy = error ? `${hintId} ${errorId}` : hintId
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
+    // Belt to the button's braces: a Return in the field submits the form without the button
+    // necessarily seeing a click, and this is the one screen a reader can reach with no network.
+    if (offline) return
     onSubmit(value.trim())
   }
 
@@ -81,9 +93,26 @@ export function ConnectForm({
           ) : null}
         </div>
 
-        <Button type="submit" variant="primary" block loading={busy}>
+        {/* Offline this asks for a server it cannot be checked against, so it says so rather
+            than failing on the press. `unavailable` rather than `unavailableReason`: the sentence
+            below is VISIBLE, and an onboarding card has the room the mail toolbar does not — but
+            the button still has to LOOK unavailable, which is the half a bare `aria-disabled`
+            silently dropped. */}
+        <Button
+          type="submit"
+          variant="primary"
+          block
+          loading={busy}
+          unavailable={offline}
+          aria-describedby={offline ? offlineId : undefined}
+        >
           {t('onboarding.connect.submit')}
         </Button>
+        {offline ? (
+          <p id={offlineId} className={styles.note}>
+            {t('onboarding.offline')}
+          </p>
+        ) : null}
       </form>
     </section>
   )

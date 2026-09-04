@@ -1317,3 +1317,176 @@ describe('AuthController — the auth store is not always reachable, and not alw
     expect((await indexedDB.databases()).map((d) => d.name)).not.toContain(dbName)
   })
 })
+
+/**
+ * The JMAP Session document that makes an offline cold start possible (FR-OFF-01, R-78, ADR-041).
+ *
+ * It lives in this store rather than in the replica for one reason, and every test here is about
+ * that reason: its validity IS the validity of the credentials beside it. It may only be written
+ * when a cold start could read it back, it must name the identity whose credentials are here and
+ * no other, and it must go when they go.
+ */
+describe('AuthController — the stored JMAP session document (FR-OFF-01)', () => {
+  const DOC = { apiUrl: 'https://mail.waxwing.test/jmap/api', state: 'sess-1' }
+  const CONNECT_URL = 'https://mail.waxwing.test'
+
+  async function basicController(staySignedIn: boolean) {
+    const { store, dbName } = freshStore()
+    const controller = new AuthController({ store })
+    await controller.startLogin({
+      method: 'basic',
+      username: 'alice@waxwing.test',
+      password: 'pw',
+      staySignedIn,
+    })
+    return { store, dbName, controller }
+  }
+
+  it('keeps the document for a session a cold start can restore, and hands it back', async () => {
+    const { controller, dbName } = await basicController(true)
+    await controller.rememberJmapSession(CONNECT_URL, DOC)
+
+    const rebooted = new AuthController({ store: new SecretStore({ dbName }) })
+    expect(await rebooted.restore()).not.toBeNull()
+    const recalled = await rebooted.recallJmapSession()
+    expect(recalled?.connectUrl).toBe(CONNECT_URL)
+    expect(recalled?.document).toEqual(DOC)
+    expect(typeof recalled?.storedAt).toBe('number')
+  })
+
+  it('THE GUARD: writes nothing when nothing about the session is persisted', async () => {
+    // Basic without "stay signed in" (FR-AUTH-04). There is no AuthRecord, so `restore()` will
+    // return null on the next cold start and the document could never be read back — storing it
+    // would leave a username and a server on a machine where the user asked for the opposite and
+    // got it for everything else.
+    const { store, controller } = await basicController(false)
+    await controller.rememberJmapSession(CONNECT_URL, DOC)
+    expect(await store.get(SecretName.JmapSession)).toBeNull()
+    expect(await controller.recallJmapSession()).toBeNull()
+  })
+
+  it('a public-computer OAuth callback leaves no document either (FR-AUTH-09)', async () => {
+    const idp = fakeIdp()
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store } = freshStore()
+    let currentHref = 'http://localhost:5173/'
+    const controller = new AuthController({
+      oauth: { issuer: 'http://localhost:18080', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      store,
+      navigate: (url) => {
+        currentHref = url
+      },
+      getHref: () => currentHref,
+      getBaseUri: () => 'http://localhost:5173/',
+      replaceUrl: (url) => {
+        currentHref = url
+      },
+    })
+    await controller.startLogin({ method: 'oauth', publicComputer: true })
+    const state = new URL(currentHref).searchParams.get('state')
+    currentHref = `http://localhost:5173/?code=c&state=${state}`
+    await controller.completeRedirect()
+
+    // No AuthRecord is written in this mode, so the guard refuses — the same rule, reached the
+    // other way. Nothing about this session may outlive the tab.
+    await controller.rememberJmapSession(CONNECT_URL, DOC)
+    expect(await store.get(SecretName.JmapSession)).toBeNull()
+  })
+
+  it('THE ONE: a new Basic sign-in drops the previous identity’s document', async () => {
+    // The window is reachable without any XSS: `startLogin` writes the new AuthRecord, and a
+    // `connectSession` that then fails (a 403, a server that blinks) drops the user back on the
+    // login form with the record on disk. Leave Alice's document beside Bob's credentials and the
+    // next offline cold start rebuilds a client for ALICE's accountId — her replica rows on
+    // screen, her account in every request — out of Bob's password.
+    const { store, controller } = await basicController(true)
+    await controller.rememberJmapSession(CONNECT_URL, DOC)
+    expect(await store.get(SecretName.JmapSession)).not.toBeNull()
+
+    await controller.startLogin({
+      method: 'basic',
+      username: 'bob@waxwing.test',
+      password: 'pw2',
+      staySignedIn: true,
+    })
+    expect(await store.get(SecretName.JmapSession)).toBeNull()
+    expect(await store.get(SecretName.AuthRecord)).toContain('bob@waxwing.test')
+  })
+
+  it('a Basic sign-in WITHOUT "stay signed in" drops it too', async () => {
+    const { store, controller } = await basicController(true)
+    await controller.rememberJmapSession(CONNECT_URL, DOC)
+    await controller.startLogin({ method: 'basic', username: 'bob@waxwing.test', password: 'pw2' })
+    expect(await store.get(SecretName.JmapSession)).toBeNull()
+  })
+
+  it('an OAuth callback drops it as well — the identity changed there too', async () => {
+    const idp = fakeIdp()
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store } = freshStore()
+    await store.put(
+      SecretName.AuthRecord,
+      JSON.stringify({ method: 'basic', username: 'alice@waxwing.test' }),
+    )
+    await store.put(
+      SecretName.JmapSession,
+      JSON.stringify({ connectUrl: CONNECT_URL, document: DOC, storedAt: 0 }),
+    )
+    let currentHref = 'http://localhost:5173/'
+    const controller = new AuthController({
+      oauth: { issuer: 'http://localhost:18080', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      store,
+      navigate: (url) => {
+        currentHref = url
+      },
+      getHref: () => currentHref,
+      getBaseUri: () => 'http://localhost:5173/',
+      replaceUrl: (url) => {
+        currentHref = url
+      },
+    })
+    await controller.startLogin({ method: 'oauth' })
+    const state = new URL(currentHref).searchParams.get('state')
+    currentHref = `http://localhost:5173/?code=c&state=${state}`
+    await controller.completeRedirect()
+
+    expect(await store.get(SecretName.JmapSession)).toBeNull()
+  })
+
+  it('a plain sign-out takes it with the credentials — no wipeData needed', async () => {
+    // The replica survives a plain sign-out and the document must not: it names the account, and
+    // "Sign out" has to mean the same thing whichever of the two menu items was chosen.
+    const { store, controller } = await basicController(true)
+    await controller.rememberJmapSession(CONNECT_URL, DOC)
+    await controller.logout()
+    expect(await store.get(SecretName.JmapSession)).toBeNull()
+  })
+
+  it('"Sign out & remove data" takes it too (FR-AUTH-05)', async () => {
+    const { store, dbName } = freshStore()
+    // An empty wipe environment: this test is about the credential store, and the surrounding
+    // `wipeLocalData` would otherwise reach for the real IndexedDB of the whole test run.
+    const wipe: WipeEnvironment = {}
+    const controller = new AuthController({ store, wipe })
+    await controller.startLogin({
+      method: 'basic',
+      username: 'alice@waxwing.test',
+      password: 'pw',
+      staySignedIn: true,
+    })
+    await controller.rememberJmapSession(CONNECT_URL, DOC)
+    await controller.logout({ wipeData: true })
+
+    expect(await store.get(SecretName.JmapSession)).toBeNull()
+    const rebooted = new AuthController({ store: new SecretStore({ dbName }) })
+    expect(await rebooted.recallJmapSession()).toBeNull()
+  })
+
+  it('a corrupt document reads as no document rather than throwing', async () => {
+    const { store, controller } = await basicController(true)
+    await store.put(SecretName.JmapSession, '{not json')
+    expect(await controller.recallJmapSession()).toBeNull()
+    await store.put(SecretName.JmapSession, JSON.stringify({ document: DOC }))
+    expect(await controller.recallJmapSession()).toBeNull()
+  })
+})

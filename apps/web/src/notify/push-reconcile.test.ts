@@ -317,6 +317,66 @@ describe('reconcilePushSubscription', () => {
     expect(client.calls).toHaveLength(0)
   })
 
+  /**
+   * Offline the whole pass is a run of authenticated JMAP writes against nothing (FR-OFF-01).
+   *
+   * Rare before the offline cold start — you had to lose the connection mid-session, between two
+   * dependency changes — and normal after it, because the host now mounts with a full session and
+   * no server behind it. Not a defect while it happened (every call landed in its own `catch`), but
+   * it is a round of work nobody asked for, and it puts a `failed` in the log for a device that is
+   * simply on a train.
+   */
+  it('does not reconcile with no network — and does not tear down either', async () => {
+    await writePushRegistration(
+      {
+        subscriptionId: 'sub-1',
+        endpoint: ENDPOINT,
+        applicationServerKey: KEY,
+        expires: FAR,
+        emailPush: false,
+      },
+      idb,
+    )
+    const client = fakeClient()
+
+    expect(await reconcilePushSubscription(deps({ online: false, client }))).toBe('cannotAct')
+
+    // Nothing left for the server, and the subscription we already have is untouched: "no network"
+    // is a come-back-later, never a decision.
+    expect(client.calls).toHaveLength(0)
+    expect(await readPushRegistration(idb)).not.toBeNull()
+  })
+
+  it('an explicit "off" still tears down offline — `unsubscribe()` is local', async () => {
+    // The guard sits BELOW the explicit-no branch on purpose. Switching notifications off must
+    // still take the BROWSER subscription down, and that half needs no server; the server-side
+    // half fails as it always did, which is the same outcome as switching off in a tunnel today.
+    await writePushRegistration(
+      {
+        subscriptionId: 'sub-1',
+        endpoint: ENDPOINT,
+        applicationServerKey: KEY,
+        expires: FAR,
+        emailPush: false,
+      },
+      idb,
+    )
+    const existing = fakeSubscription()
+
+    expect(
+      await reconcilePushSubscription(
+        deps({ online: false, enabled: false, registration: fakeRegistration(existing) }),
+      ),
+    ).toBe('unsubscribed')
+    expect(existing.unsubscribed).toBe(true)
+  })
+
+  it('reconciles as usual when `online` is not stated', async () => {
+    // The default is `true`, and `undefined` must not read as "offline": the flag is optional so
+    // that every caller predating it keeps working, and the guard is `=== false` for that reason.
+    expect(await reconcilePushSubscription(deps({ online: undefined }))).toBe('subscribed')
+  })
+
   it('does not act when the session is gone — and does not tear down either', async () => {
     expect(await reconcilePushSubscription(deps({ session: null }))).toBe('cannotAct')
   })

@@ -2639,23 +2639,52 @@ explicit owner decision:
   `Email/query` in `limit` chunks (`collectMatchingIds` in the engine is the paginator that already
   exists). `rights.ts`'s account-floor clause is what keeps the rights verdict sound over ids whose
   rows are not hydrated, and it is already there.
-- **The offline cold start, the rest of FR-OFF-01 (filed 2026-09-02 with R-78).** An installed PWA
-  opened offline boots its shell out of the precache and then lands on the SIGN-IN FORM, reading
-  "Could not reach the server", with a fully populated replica behind it and no way to reach it.
-  `AuthController.restore()` works offline exactly as documented; `SessionProvider.boot()` step B
-  feeds the restored session straight into `connectSession()`, which fetches the JMAP session
-  document from the network — and `jmapSession` is held in memory only, persisted nowhere. Known
-  and deliberately pinned since M3.5: `e2e/tests/pwa.spec.ts` asserts `toBeHidden()` on the cached
-  mail as a TRIPWIRE, and its block comment names the defect correctly. What this entry adds is a
-  place for it outside a test comment — the plan entry of 2026-07-20 described the cause wrongly,
-  and a Must (FR-OFF-01) that lives only in an assertion nobody is tracking is a Must nobody owns.
-  The fix as the tripwire sketches it: write the session document into the encrypted replica on a
-  successful `connectSession` (no mail content, no token — and NOT into the service-worker cache,
-  whose invariant is zero bytes from JMAP), build a `JmapClient` from it in `boot()` when
-  `restore()` succeeds and the connect fails with a `TypeError`/offline, mark `connected` as
-  offline, and `refreshSession()` on reconnect. Then rewrite the tripwire into the offline
-  cold-start test M3.5 originally asked for. Medium, and a product decision rather than a fix: it
-  changes what is persisted about a session.
+- ~~The offline cold start, the rest of FR-OFF-01 (filed 2026-09-02 with R-78)~~ — **shipped
+  2026-09-04**, and the E2E tripwire that pinned it is now the offline cold-start test M3.5 asked
+  for. An installed PWA opened offline booted its shell out of the precache and then landed on the
+  SIGN-IN FORM reading "Could not reach the server", with a fully populated replica behind it and
+  no way to reach it: `restore()` works offline exactly as documented, but `boot()` step B fed the
+  restored session straight into `connectSession()`, which fetches the JMAP session document from
+  the network — and `jmapSession` was held in memory only. **The document is now persisted, and it
+  is the WHERE that turned out to be the decision: not the replica this entry sketched, but the
+  encrypted credential store beside the `AuthRecord` (ADR-041).** Three things the replica could
+  not have given: it is not encrypted (its own header says so — only the auth store is, so the
+  chosen store is the one this entry's text described and the replica is the one it pointed at);
+  it survives a plain sign-out, which the document must not; and it is shared across accounts by
+  design (ADR-008) while the document is what DECIDES the account id. In the credential store the
+  invariant *"the stored document belongs to the stored credentials"* is structural rather than
+  maintained at five call sites: it is written only when there is an `AuthRecord` to pair it with —
+  so Basic without "stay signed in" and public-computer mode still persist nothing — it is deleted
+  on the same lines that write a new record, and `logout()` destroys it with the database. **Read
+  back, it is re-validated as if it had just been fetched**: `sessionFromStore` re-runs the shape
+  check AND the origin check on the four URLs, because those are where the `Authorization` header
+  goes and a document out of a store is one step further from the server than a response, never
+  one closer. **Two deliberate narrowings of the sketch.** The offline path is entered only on a
+  `TypeError` while `navigator.onLine` is false — with the device claiming a connection, "could not
+  reach {{host}}" is a fault the reader can act on and a read-only replica would hide it, with no
+  `online` event ever coming to end that state. And the reconnect re-runs the whole connect rather
+  than `refreshSession()`, which would swap the document inside the client and leave
+  `connected.accounts`/`delegated` — the two lists the sidebar and the engine fleet actually read —
+  exactly as stale as they were. **No new user-visible string:** offline is already a state this
+  app says out loud, in the header chip, the outbox and `unavailableReason` on the screens that
+  write straight to JMAP, and all of it is driven by `navigator.onLine`, so it applies to a cold
+  start unchanged. 13 mutations run, all red, including the E2E one — the tripwire's own
+  instruction. **Two follow-ups shipped with it, both found by the work itself.** (1) The
+  same-origin probe reported a request that got no answer as "no server here", and step C of the
+  boot read that as the cue to open the MANUAL server-entry step — so the reader who could do least
+  about it, no stored session and no network, got the most technical screen this app has, asking
+  for an address it had no way to check. `probe` now answers `present | absent | unknown`; a silence
+  falls back to the last server this browser actually used, and only a genuinely first launch with
+  no connection still reaches the server-entry step. Both onboarding steps say why they cannot act
+  while offline, in the shape `LoginForm` already used for an unavailable OAuth button
+  (`aria-disabled` plus a visible note), with the submit guarded in the handler as well — Return in
+  a field submits a form without the button seeing a click. One new string, `onboarding.offline`,
+  in all 14 bundles. `defaultServices` had no test at all before this: the production seam every
+  other test replaces with a fake, which is why the defect was invisible to 5800 tests. (2) The
+  push reconcile pass now takes `online` and returns `cannotAct` without it — a run of
+  authenticated JMAP writes into a dead network was a rare accident before the cold start and the
+  normal case after it. The guard sits BELOW the explicit-no branch on purpose: switching
+  notifications off must still take the browser subscription down, and `unsubscribe()` is local.
 - Offline search over cached subset (FR-SRCH-04).
 - ~~PWA badging (FR-NOTIF-04)~~ — **shipped in M5.3**; notification actions (FR-NOTIF-05)
   remain (ADR-017 explains why they are harder than they look).
@@ -2848,7 +2877,7 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | Notifications | FR-NOTIF-01 | SP.3, M1.3, M1.9 |
 | | FR-NOTIF-02/03 | M3.6 |
 | | FR-NOTIF-04 | M5.3 |
-| Offline | FR-OFF-01 | M3.5 |
+| Offline | FR-OFF-01 | M3.5 (shell) + §11 offline cold start, 2026-09-04 |
 | | FR-OFF-02 | M1.2/M1.8, M3.4 |
 | | FR-OFF-03 | M1.3, M3.3 |
 | | FR-OFF-04 | M3.4 |

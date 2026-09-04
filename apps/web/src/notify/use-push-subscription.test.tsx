@@ -237,6 +237,7 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+  Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
   resetSwRegistrationState()
   resetReconcileSerialisation()
   resetPermissionStore()
@@ -294,6 +295,42 @@ describe('PushSubscriptionHost lifecycle', () => {
   // serialisation. A test that cannot fail is worse than none. The guarantee is covered where it can
   // truly bite: the concurrent `Promise.all([reconcilePush, …])` case in `push-reconcile.test.ts`,
   // which goes red the moment the serialisation is removed.
+
+  it('L1b: a session that STARTED offline sends nothing, and subscribes on reconnect', async () => {
+    // The FR-OFF-01 cold start made this a normal mount rather than a rare accident: the host now
+    // comes up with a full `connected` session and no server behind it, and every write the pass
+    // makes is an authenticated JMAP call into a dead network. Wiring, not logic — the guard lives
+    // in `push-reconcile.ts` and is tested there; what this pins is that the host actually reads
+    // the browser and hands the answer over. Without it the flag is a prop nobody sets.
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    const client = fakeClient(makeSession())
+
+    const { rerender } = render(
+      <Providers db={db} session={connectedValue(client)}>
+        <PushSubscriptionHost />
+      </Providers>,
+    )
+    // Settled far longer than the online half below needs to produce its create, so "nothing was
+    // sent" is measured over a window in which something demonstrably would have been. One
+    // `settle()` is NOT enough here: the chain is a registration lookup, an IndexedDB read and a
+    // subscribe before the first JMAP call, and a single macrotask lets this pass whether the
+    // guard exists or not — which is exactly the shape of test this suite was written to stop.
+    for (let turn = 0; turn < 20; turn += 1) await settle()
+    expect(client.calls).toHaveLength(0)
+
+    // And the moment there is a connection, without anything else changing.
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+    })
+    rerender(
+      <Providers db={db} session={connectedValue(client)}>
+        <PushSubscriptionHost />
+      </Providers>,
+    )
+    await waitFor(() => expect(creates(client)).toHaveLength(1))
+    expect(destroys(client)).toHaveLength(0)
+  })
 
   it('L3: a grant obtained elsewhere reaches the host and it subscribes', async () => {
     // Defect #1: the permission was per-component `useState`, so the settings screen granted it into

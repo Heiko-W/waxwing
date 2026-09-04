@@ -30,6 +30,14 @@ export interface LoginFormProps {
     staySignedIn: boolean,
     publicComputer: boolean,
   ) => void
+  /**
+   * The device has no connection, so no sign-in can complete (FR-OFF-01).
+   *
+   * A prop, not a `useOnline()` call: this component is presentational by contract, and the
+   * container already knows. It gates the OFFER only — the failure path behind it stays exactly
+   * where it was, because `navigator.onLine` is a floor and not a guarantee.
+   */
+  readonly offline?: boolean
   readonly onBack?: () => void
 }
 
@@ -60,6 +68,7 @@ export function LoginForm({
   error,
   onOAuth,
   onBasicSubmit,
+  offline = false,
   onBack,
 }: LoginFormProps) {
   const { t } = useTranslation()
@@ -75,6 +84,7 @@ export function LoginForm({
   const oauthNoteId = `${id}-oauth-note`
   const errorId = `${id}-error`
   const basicId = `${id}-basic`
+  const basicOfflineId = `${id}-basic-offline`
 
   const hasOAuth = methods.includes('oauth')
   const hasBasic = methods.includes('basic')
@@ -99,12 +109,15 @@ export function LoginForm({
   }, [basicOpen])
 
   function handleOAuth(): void {
-    if (!oauthAvailable || busy) return
+    if (!oauthAvailable || offline || busy) return
     onOAuth(publicComputer)
   }
 
   function handleBasicSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
+    // A Return in the password field submits the form without the button necessarily seeing a
+    // click, so the guard lives here as well as on the control.
+    if (offline) return
     onBasicSubmit(username, password, staySignedIn, publicComputer)
   }
 
@@ -151,8 +164,11 @@ export function LoginForm({
             variant={oauthPrimary && !basicOpen ? 'primary' : 'secondary'}
             block
             loading={busy}
-            aria-disabled={!oauthAvailable || undefined}
-            aria-describedby={oauthAvailable ? undefined : oauthNoteId}
+            // Not a bare `aria-disabled`: that announced the refusal and left the button in full
+            // primary blue, which is a promise to the eye that the attribute has just withdrawn.
+            // Pre-existing for the insecure-origin case; the offline case inherited it.
+            unavailable={!oauthAvailable || offline}
+            aria-describedby={oauthAvailable && !offline ? undefined : oauthNoteId}
             onClick={handleOAuth}
           >
             {t('auth.oauth.button')}
@@ -161,9 +177,14 @@ export function LoginForm({
               the password and the 2FA code are entered. Without it the redirect looks like the
               app losing them to a strange page. */}
           <p id={oauthNoteId} className={styles.note}>
-            {oauthAvailable
-              ? t('auth.oauth.explain', { host: target.displayHost })
-              : t('auth.oauth.unavailable')}
+            {/* Offline first, because it is the reason that applies TODAY: an insecure origin is a
+                property of the deployment and will still be true tomorrow, while "you have no
+                connection" is the one the reader can do something about. */}
+            {offline
+              ? t('onboarding.offline')
+              : oauthAvailable
+                ? t('auth.oauth.explain', { host: target.displayHost })
+                : t('auth.oauth.unavailable')}
           </p>
         </div>
       ) : null}
@@ -256,9 +277,21 @@ export function LoginForm({
             variant={oauthPrimary && !basicOpen ? 'secondary' : 'primary'}
             block
             loading={busy}
+            unavailable={offline}
+            // The OAuth note above already carries the sentence when there is one; pointing at it
+            // rather than repeating it is what keeps one screen to one statement — and what keeps
+            // this from naming an element that is not rendered.
+            aria-describedby={offline ? (hasOAuth ? oauthNoteId : basicOfflineId) : undefined}
           >
             {t('auth.basic.submit')}
           </Button>
+          {/* Only when the OAuth button is not already carrying the same sentence three inches
+              above: one screen, one statement. */}
+          {offline && !hasOAuth ? (
+            <p id={basicOfflineId} className={styles.note}>
+              {t('onboarding.offline')}
+            </p>
+          ) : null}
         </form>
       ) : null}
 

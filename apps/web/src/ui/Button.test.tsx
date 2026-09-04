@@ -80,4 +80,72 @@ describe('Button', () => {
     expect(button).not.toHaveAttribute('aria-disabled')
     expect(button).not.toHaveAttribute('aria-describedby')
   })
+
+  /**
+   * A CONTROL HAS TO LOOK THE WAY IT BEHAVES, and this half is the one that went missing.
+   *
+   * The onboarding buttons were given a bare `aria-disabled` through `...rest`. The attribute
+   * arrived, the CLASS that dims the button did not, and the result was the worst version of this
+   * control: unavailable to a screen reader, full primary blue and `cursor: pointer` to everybody
+   * else. Every assertion in this file passed. It took looking at the screen.
+   *
+   * The class name is compared rather than quoted: it is a CSS-module hash, and what the tests
+   * below actually claim is a RELATION — "`unavailable` renders exactly the treatment
+   * `unavailableReason` has always rendered" — which is what stops a second appearance being
+   * invented for the same state.
+   */
+  const classesOf = (name: string) => screen.getByRole('button', { name }).className.split(' ')
+
+  it('`unavailable` renders the same treatment as `unavailableReason`, and not the plain one', () => {
+    render(
+      <>
+        <Button unavailable>Alpha</Button>
+        <Button unavailableReason="You are offline.">Beta</Button>
+        <Button>Gamma</Button>
+      </>,
+    )
+    expect(classesOf('Alpha')).toEqual(classesOf('Beta'))
+    // …and the comparison is not vacuous: the plain button carries one class fewer.
+    expect(classesOf('Gamma').length).toBe(classesOf('Alpha').length - 1)
+    expect(classesOf('Alpha')).toEqual(
+      expect.arrayContaining([expect.stringMatching(/unavailable/)]),
+    )
+  })
+
+  it('`unavailable` alone behaves like a refusal: aria-disabled, focusable, no activation', async () => {
+    const user = userEvent.setup()
+    const onClick = vi.fn()
+    render(
+      <Button unavailable onClick={onClick}>
+        Continue
+      </Button>,
+    )
+    const button = screen.getByRole('button', { name: 'Continue' })
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    button.focus()
+    expect(button).toHaveFocus()
+    await user.click(button)
+    expect(onClick).not.toHaveBeenCalled()
+  })
+
+  it('`unavailable` adds NO hidden sentence — the visible one is the statement', () => {
+    // The prop exists for the case where the explanation is already on screen. A second,
+    // invisible copy would be the same sentence twice for a screen reader and once for everyone
+    // else, which is the bug this primitive already fixed once for `unavailableReason`.
+    const { container } = render(<Button unavailable>Continue</Button>)
+    const button = screen.getByRole('button', { name: 'Continue' })
+    expect(button).not.toHaveAttribute('aria-describedby')
+    expect(container.textContent).toBe('Continue')
+  })
+
+  it('a hard `disabled` still wins over `unavailable`', () => {
+    render(
+      <Button unavailable disabled>
+        Continue
+      </Button>,
+    )
+    const button = screen.getByRole('button', { name: 'Continue' })
+    expect(button).toBeDisabled()
+    expect(button).not.toHaveAttribute('aria-disabled')
+  })
 })
