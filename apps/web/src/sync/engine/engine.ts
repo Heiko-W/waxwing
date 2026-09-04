@@ -17,6 +17,7 @@
 import {
   type AuthProvider,
   createPushChannel,
+  type EmailComparator,
   type EmailFilter,
   getCoreCapability,
   type Id,
@@ -1346,23 +1347,91 @@ export class SyncEngine {
    * not assumed to be the last), else on the first short/empty page.
    */
   private async collectMatchingIds(filter: EmailFilter): Promise<Id[]> {
+    const { ids } = await this.pageQueryIds({
+      filter,
+      sort: [{ property: 'receivedAt', isAscending: true }],
+    })
+    return ids
+  }
+
+  /**
+   * Every id a WATCHED WINDOW matches, paged out of `Email/query` — the ids-only half of what the
+   * window would hold if it were fully loaded. This is "select all in folder" (FR-LST-04, R-08
+   * stage 2): the list offers it after a select-all over an incomplete window, and hands the result
+   * straight into the selection.
+   *
+   * The spec comes from the CACHED WINDOW ROW, not from the caller: `filter`, `sort` and
+   * `collapseThreads` together are what make an id-set, and re-deriving any of them at this seam is
+   * how a "select all" ends up selecting a different set from the one on screen. `collapseThreads`
+   * is the sharp one — a collapsed query answers with ONE id per thread, and which one depends on
+   * the sort — so the window's own sort is used even though {@link collectMatchingIds} has a good
+   * reason to prefer oldest-first (see below). No `Email/get`: 300 ids is a selection, 300 envelopes
+   * is a download nobody asked for, and the rows arrive as they always did, when `loadMore` pages
+   * them in or a bulk action needs them.
+   *
+   * `complete: false` means the query has more ids than `max` and the caller must NOT apply what it
+   * got: a partial set presented as "all of them" is precisely the false promise this feature exists
+   * to remove. The cap is the caller's — see `use-select-all-in-query.ts` for what bounds it.
+   *
+   * THE RACE, stated rather than hidden. Paging by `position` while another client edits the folder
+   * can duplicate an id (an arrival shifts the tail right — harmless, the ids are de-duplicated) or
+   * MISS one (a removal shifts the tail left across a page boundary). `collectMatchingIds` dodges
+   * the first half by sorting oldest-first, where arrivals append instead of shifting; this one
+   * cannot, because it must reproduce the window's own id-set. What that costs is bounded and
+   * honest: the selection ends up holding a few ids fewer than `total`, and the bar states the size
+   * it actually holds. It never holds an id the query did not answer with.
+   */
+  async collectQueryIds(
+    key: string,
+    options: { max: number },
+  ): Promise<{
+    ids: Id[]
+    complete: boolean
+  }> {
+    const row = await getQueryCache(this.db, this.accountId, key)
+    if (!row) throw new Error(`collectQueryIds: no query cache for key ${key}`)
+    return this.pageQueryIds(
+      { filter: row.filter, sort: row.sort, collapseThreads: row.collapseThreads },
+      options.max,
+    )
+  }
+
+  /**
+   * The shared `Email/query` paginator: pages `spec` in fixed chunks until the server's `total` is
+   * reached (a short page is NOT assumed to be the last), until a page comes back short with no
+   * `total` to go on, or until `max` ids have been collected — which is the only way `complete` is
+   * `false`. Ids are de-duplicated, because a concurrent arrival can hand the same id back twice.
+   */
+  private async pageQueryIds(
+    spec: {
+      filter?: EmailFilter | null
+      sort?: EmailComparator[] | null
+      collapseThreads?: boolean
+    },
+    max = Number.POSITIVE_INFINITY,
+  ): Promise<{ ids: Id[]; complete: boolean }> {
     const PAGE = 500
+    const seen = new Set<Id>()
     const ids: Id[] = []
     let position = 0
     for (;;) {
       const result = await this.port.queryEmails({
-        filter,
-        sort: [{ property: 'receivedAt', isAscending: true }],
+        ...spec,
         limit: PAGE,
         position,
         calculateTotal: true,
       })
       if (result.ids.length === 0) break
-      ids.push(...result.ids)
+      for (const id of result.ids) {
+        if (seen.has(id)) continue
+        seen.add(id)
+        ids.push(id)
+      }
       position += result.ids.length
-      if (result.total !== undefined ? ids.length >= result.total : result.ids.length < PAGE) break
+      if (ids.length > max) return { ids: ids.slice(0, max), complete: false }
+      if (result.total !== undefined ? position >= result.total : result.ids.length < PAGE) break
     }
-    return ids
+    return { ids, complete: true }
   }
 
   /**

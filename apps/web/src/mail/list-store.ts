@@ -110,18 +110,39 @@ function sameIds(a: readonly Id[], b: readonly Id[]): boolean {
  * sibling tab moved it, a push removed it, an account switch reused the same window key) is invisible
  * and un-deselectable, yet `targetIds` would still put it FIRST — so the next `e` would archive a
  * message the user cannot see. The anchor/base follow the same rule.
+ *
+ * A SELECT-ALL-IN-QUERY selection (`beyondWindow`, R-08 stage 2) is judged by a narrower rule, and
+ * the difference is the whole point of that flag: 250 of its 300 ids are outside the window BY
+ * CONSTRUCTION, so "not in the window" no longer means "gone". What still means gone is an id that
+ * WAS in the window and is not any more — the one departure this store can actually observe — and
+ * that is exactly what the rule below keeps pruning. Ids the window never held are left alone; the
+ * server can drop one out of the query and nothing here will see it, which is the honest limit of a
+ * snapshot and is why the bar names a number rather than claiming "all of them, whenever you act".
+ *
+ * A window swap does not come through here at all: {@link ListStore.setWindow} resets the selection
+ * outright on a new `windowKey`, so a folder change, a sort change and an account switch each void
+ * the whole thing regardless of this flag.
  */
-function pruneSelection(selection: SelectionState, ids: readonly Id[]): SelectionState {
+function pruneSelection(
+  selection: SelectionState,
+  previousIds: readonly Id[],
+  ids: readonly Id[],
+): SelectionState {
   const live = new Set<string>(ids)
+  const departed = selection.beyondWindow
+    ? new Set<string>(previousIds.filter((id) => !live.has(id)))
+    : null
+  const keeps = (id: string): boolean => (departed === null ? live.has(id) : !departed.has(id))
   const selected = new Set<string>()
-  for (const id of selection.selected) if (live.has(id)) selected.add(id)
+  for (const id of selection.selected) if (keeps(id)) selected.add(id)
   if (selected.size === selection.selected.size) return selection
   const base = new Set<string>()
-  for (const id of selection.base) if (live.has(id)) base.add(id)
+  for (const id of selection.base) if (keeps(id)) base.add(id)
   return {
     selected,
-    anchor: selection.anchor !== null && live.has(selection.anchor) ? selection.anchor : null,
+    anchor: selection.anchor !== null && keeps(selection.anchor) ? selection.anchor : null,
     base,
+    beyondWindow: selection.beyondWindow,
   }
 }
 
@@ -144,7 +165,7 @@ export const useListStore = create<ListStore>()((set, get) => ({
         ids,
         sourceMailboxId,
         focusIndex: found >= 0 ? found : clamp(current.focusIndex, ids.length),
-        selection: pruneSelection(current.selection, ids),
+        selection: pruneSelection(current.selection, current.ids, ids),
       })
       return
     }

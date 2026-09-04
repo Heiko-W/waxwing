@@ -1,6 +1,7 @@
 import type { Session } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ReplicaDb } from '../db'
+import { putQueryCache } from '../repo'
 import { freshDb } from '../test-utils'
 import { SyncEngine, type SyncEngineDeps } from './engine'
 import type { EmailQuerySpec, JmapPort, QueryResult } from './types'
@@ -131,5 +132,100 @@ describe('SyncEngine cleanup — destroyMatching', () => {
       expect(payload.from).toBe('inbox')
       expect(payload.to).toBe('trash')
     }
+  })
+})
+
+/**
+ * `collectQueryIds` — "select all in folder" (FR-LST-04, R-08 stage 2).
+ *
+ * The same paginator the cleanup above uses, pointed at a WATCHED WINDOW instead of a filter, so the
+ * list can hand the whole query's ids to the selection. Two properties carry the weight: the spec
+ * comes off the cached window row (a re-derived one would select a different set from the one on
+ * screen — `collapseThreads` alone changes which id per thread comes back), and a query bigger than
+ * the caller's cap is reported as INCOMPLETE rather than silently truncated.
+ */
+describe('SyncEngine collectQueryIds — select-all over the query', () => {
+  const SPEC = {
+    filter: { operator: 'AND' as const, conditions: [{ inMailbox: 'inbox' }] },
+    sort: [{ property: 'receivedAt' as const, isAscending: false }],
+    collapseThreads: true,
+  }
+
+  async function seedWindow(ids: string[]): Promise<void> {
+    await putQueryCache(db, {
+      accountId: ACC,
+      key: 'w',
+      ids: ids.slice(0, 2),
+      queryState: 'q',
+      total: ids.length,
+      upToId: ids[1] ?? null,
+      filter: SPEC.filter,
+      sort: SPEC.sort,
+      collapseThreads: SPEC.collapseThreads,
+      lastUsedAt: 1,
+    })
+  }
+
+  it('pages the window’s OWN filter, sort and threading — not a re-derived query', async () => {
+    const { engine, queries } = makeEngine(db, ['e1', 'e2', 'e3'], 500)
+    await seedWindow(['e1', 'e2', 'e3'])
+
+    const result = await engine.collectQueryIds('w', { max: 100 })
+
+    expect(result).toEqual({ ids: ['e1', 'e2', 'e3'], complete: true })
+    expect(queries[0]?.filter).toEqual(SPEC.filter)
+    expect(queries[0]?.sort).toEqual(SPEC.sort)
+    expect(queries[0]?.collapseThreads).toBe(true)
+    // Ids only: the envelopes arrive when the list pages them in, not because 300 rows were ticked.
+    expect(queries[0]?.calculateTotal).toBe(true)
+  })
+
+  it('walks short pages to the total, and de-duplicates what a shifting query repeats', async () => {
+    // A message arriving mid-paging shifts the tail right, so the same id can come back on two
+    // pages. It must count once — `ids.length` is what the bar then says out loud.
+    const seen: number[] = []
+    const port = {
+      accountId: ACC,
+      async queryEmails(spec: EmailQuerySpec): Promise<QueryResult> {
+        const position = spec.position ?? 0
+        seen.push(position)
+        const pages: Record<number, string[]> = { 0: ['e1', 'e2'], 2: ['e2', 'e3'], 4: [] }
+        return {
+          ids: pages[position] ?? [],
+          queryState: 'q',
+          canCalculateChanges: true,
+          position,
+          total: 4,
+        }
+      },
+    } as unknown as JmapPort
+    const { engine } = makeEngine(db, [], 500)
+    ;(engine as unknown as { port: JmapPort }).port = port
+    await seedWindow(['e1', 'e2'])
+
+    const result = await engine.collectQueryIds('w', { max: 100 })
+
+    // Three ids for a `total` of four, and that is the honest answer rather than a bug: paging by
+    // position across a query that is being edited can repeat an id, and the selection then holds
+    // one fewer than the folder claims. The bar states the size it HOLDS, so nothing over-promises.
+    expect(result).toEqual({ ids: ['e1', 'e2', 'e3'], complete: true })
+    // Two requests, not three: paging stops on the server's own `total` (positions consumed), so a
+    // repeat does not buy an extra round trip.
+    expect(seen).toEqual([0, 2])
+  })
+
+  it('stops at the cap and says the answer is INCOMPLETE', async () => {
+    const { engine } = makeEngine(db, ['e1', 'e2', 'e3', 'e4', 'e5'], 500, 2)
+    await seedWindow(['e1', 'e2'])
+
+    expect(await engine.collectQueryIds('w', { max: 3 })).toEqual({
+      ids: ['e1', 'e2', 'e3'],
+      complete: false,
+    })
+  })
+
+  it('refuses a key it has no window for', async () => {
+    const { engine } = makeEngine(db, ['e1'], 500)
+    await expect(engine.collectQueryIds('nope', { max: 10 })).rejects.toThrow(/no query cache/)
   })
 })

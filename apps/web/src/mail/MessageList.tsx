@@ -82,6 +82,7 @@ import { useMessageActions } from './use-message-actions'
 import { type ListSource, type MessageSort, useMessageList } from './use-message-list'
 import { useAccountIsReadOnly, useMessageRightsFor } from './use-message-rights'
 import { usePrefetchBodies } from './use-prefetch-bodies'
+import { type SelectAllInQuery, useSelectAllInQuery } from './use-select-all-in-query'
 import { type ResolvedSwipe, useRowSwipe } from './use-swipe'
 import { useTriage } from './use-triage'
 
@@ -194,6 +195,8 @@ export function MessageList({
   // The list's own move picker (`v`, and the bulk bar's Move) dispatches through the same triage seam
   // the chords use, so it gets the undo toast rather than a bare `actions.move`.
   const triage = useTriage()
+  // The second step of select-all (R-08 stage 2) — offered below, once the bar has said "50 of 300".
+  const selectAllInQuery = useSelectAllInQuery(windowKey, total)
 
   // Selection, roving focus and the label-picker request live in the hoisted list store (M3.8), so the
   // keyboard layer and the command palette can drive the list from outside this component. The
@@ -820,14 +823,27 @@ export function MessageList({
    * That last condition is deliberately narrow: a hand-picked three-of-three still reads "3
    * selected", because there the reader chose the scope and no promise was made.
    *
-   * FR-LST-04's actual "select-all-in-folder" — an explicit "Select all {{total}}" that pages the
-   * remaining ids out of `Email/query` — is NOT this, and is not here. See the post-V1 backlog.
+   * And where the bar says both numbers it now also OFFERS the second one (FR-LST-04, R-08 stage 2):
+   * `selectedOutOf !== undefined` is exactly the state in which "Select all {{total}}" is the
+   * sentence's natural continuation, so the two are computed from one condition rather than from two
+   * that could drift. Once that step has run, `beyondWindow` is set and the counting changes shape:
+   * the selection is no longer measured against the window at all (it is a superset of it), the box
+   * is CHECKED rather than mixed, and the count is a plain "300 selected" — a fact about what is
+   * held, where "all" would be a claim about a folder that can have moved on since.
    */
+  const queryScope = selection.beyondWindow
   const windowIsWholeQuery = total === undefined || ids.length >= total
-  const windowAllTicked = ids.length > 0 && selection.selected.size === ids.length
-  const allSelected = windowAllTicked && windowIsWholeQuery
+  // "Every loaded row is ticked." In query scope the ticked set is a SUPERSET of the window, so
+  // counting against `ids.length` would report a 300-id selection over a 50-id window as partial;
+  // there the question is whether the window is still contained, which un-ticking one row answers no.
+  const windowAllTicked =
+    ids.length > 0 &&
+    (queryScope
+      ? ids.every((id) => selection.selected.has(id))
+      : selection.selected.size === ids.length)
+  const allSelected = windowAllTicked && (windowIsWholeQuery || queryScope)
   const someSelected = selection.selected.size > 0 && !allSelected
-  const selectedOutOf = windowAllTicked && !windowIsWholeQuery ? total : undefined
+  const selectedOutOf = windowAllTicked && !windowIsWholeQuery && !queryScope ? total : undefined
   const activeId = ids[focusIndex]
   const activeDescendant = activeId !== undefined ? rowDomId(activeId) : undefined
   /**
@@ -920,6 +936,15 @@ export function MessageList({
               allSelected={allSelected}
               someSelected={someSelected}
               outOf={selectedOutOf}
+              queryScope={queryScope}
+              // The step is offered in exactly the state the counter names two numbers in, and only
+              // while an engine can page the query — no engine is a structurally absent action, not
+              // a refusal to explain.
+              selectAllInQuery={
+                selectedOutOf !== undefined && selectAllInQuery !== undefined
+                  ? { total: selectedOutOf, ...selectAllInQuery }
+                  : undefined
+              }
               onSelectAll={() => dispatchSelection({ type: 'selectAll', ordered: ids })}
               onClear={() => dispatchSelection({ type: 'clear' })}
               onRequestDelete={() => requestDestroy(selectedIds)}
@@ -1397,6 +1422,18 @@ interface BulkBarProps {
    * everywhere else, including a hand-picked partial selection, where the reader set the scope.
    */
   readonly outOf: number | undefined
+  /**
+   * The selection reaches PAST the loaded window — it came from the second step below, so the count
+   * beside the box is the whole of it and the box is checked rather than mixed.
+   */
+  readonly queryScope: boolean
+  /**
+   * The second step of select-all (R-08 stage 2), or `undefined` when there is nothing to offer:
+   * the window is the query, the reader hand-picked the scope, the step has already run, or no
+   * engine serves this account. `total` is the number the button names; the rest is the control's
+   * own state (see `use-select-all-in-query.ts`).
+   */
+  readonly selectAllInQuery: (SelectAllInQuery & { readonly total: number }) | undefined
   readonly onSelectAll: () => void
   readonly onClear: () => void
   readonly onRequestDelete: () => void
@@ -1437,6 +1474,8 @@ function BulkBar({
   allSelected,
   someSelected,
   outOf,
+  queryScope,
+  selectAllInQuery,
   onSelectAll,
   onClear,
   onRequestDelete,
@@ -1766,78 +1805,114 @@ function BulkBar({
     onSelect: action.onSelect,
   }))
 
+  /**
+   * The second step, and the way back out of it, as ONE row of its own under the actions.
+   *
+   * Its own row because of what the row above it is: `.bulkBar` is `flex-wrap: nowrap` with an
+   * overflow menu sized by measuring the space the actions have left, and a text button wedged
+   * between the count and that measurement makes every width the app ships for tighter — worst on a
+   * phone, where "50 of 300 selected" and "Select all 300" are most of a 390px line before a single
+   * action has been drawn. A row of its own has the width for both states at every tier, and it is
+   * also the shape the pattern is known by elsewhere (Gmail's strip above the list).
+   *
+   * The two states are one control in one place, which is the point: the step in and the step back
+   * are the same size, in the same spot, and the way back reuses the sentence the header checkbox
+   * has always used for it (`list.clearSelection`) rather than inventing a second name for it. The
+   * checkbox still clears too — this does not replace it, it makes it visible to someone who is not
+   * looking for a checkbox.
+   */
+  const step =
+    selectAllInQuery !== undefined ? (
+      <Button
+        size="sm"
+        variant="ghost"
+        loading={selectAllInQuery.pending}
+        unavailableReason={selectAllInQuery.unavailableReason}
+        onClick={selectAllInQuery.run}
+      >
+        {t('list.selectAllInQuery', { total: selectAllInQuery.total })}
+      </Button>
+    ) : queryScope ? (
+      <Button size="sm" variant="ghost" onClick={onClear}>
+        {t('list.clearSelection')}
+      </Button>
+    ) : null
+
   return (
-    <div className={styles.bulkBar}>
-      {/* The name has to follow the action. Once everything is selected this control CLEARS the
+    <div className={styles.bulkBarStack}>
+      <div className={styles.bulkBar}>
+        {/* The name has to follow the action. Once everything is selected this control CLEARS the
           selection (see `onChange` below), but it kept announcing "Select all" — a control naming
           one action and performing the opposite, and for a screen-reader user the name is the only
           information there is. `list.clearSelection` was already translated in both languages and
           had no caller. */}
-      <Checkbox
-        aria-label={windowAllTicked ? t('list.clearSelection') : t('list.selectAll')}
-        checked={allSelected}
-        indeterminate={someSelected}
-        // Driven by the STATE, not by the box's next `checked` (R-08). Once the box can be
-        // `indeterminate` while every loaded row is ticked — a select-all over a folder whose window
-        // is not the whole folder — a click reports `checked: true` and would have re-selected what
-        // was already selected, leaving no way to clear from here at all.
-        onChange={() => (windowAllTicked ? onClear() : onSelectAll())}
-      />
-      <span className={styles.bulkCount}>
-        {outOf === undefined
-          ? t('list.selected', { count })
-          : t('list.selectedOfTotal', { count, total: outOf })}
-      </span>
-      {activeLabel !== undefined && (
-        <Button
-          size="sm"
-          variant="ghost"
-          unavailableReason={reasonText(rights.reason('keywords'))}
-          onClick={() => {
-            // Through the triage seam, so it toasts with an Undo like every other bulk action
-            // (B21). `actions.setKeyword` direct was silent and had no way back — and this is the
-            // one write in the bar that removes what the view is filtered BY, so the rows leave the
-            // list as it lands and take the evidence of the mistake with them.
-            triage.removeLabel(ids, activeLabel)
-            onClear()
-          }}
-        >
-          {t('labels.removeFromLabel')}
-        </Button>
-      )}
-      {/* The measured container is THIS one, not the bar: the checkbox, the count and the
+        <Checkbox
+          aria-label={windowAllTicked ? t('list.clearSelection') : t('list.selectAll')}
+          checked={allSelected}
+          indeterminate={someSelected}
+          // Driven by the STATE, not by the box's next `checked` (R-08). Once the box can be
+          // `indeterminate` while every loaded row is ticked — a select-all over a folder whose window
+          // is not the whole folder — a click reports `checked: true` and would have re-selected what
+          // was already selected, leaving no way to clear from here at all.
+          onChange={() => (windowAllTicked ? onClear() : onSelectAll())}
+        />
+        <span className={styles.bulkCount}>
+          {outOf === undefined
+            ? t('list.selected', { count })
+            : t('list.selectedOfTotal', { count, total: outOf })}
+        </span>
+        {activeLabel !== undefined && (
+          <Button
+            size="sm"
+            variant="ghost"
+            unavailableReason={reasonText(rights.reason('keywords'))}
+            onClick={() => {
+              // Through the triage seam, so it toasts with an Undo like every other bulk action
+              // (B21). `actions.setKeyword` direct was silent and had no way back — and this is the
+              // one write in the bar that removes what the view is filtered BY, so the rows leave the
+              // list as it lands and take the evidence of the mistake with them.
+              triage.removeLabel(ids, activeLabel)
+              onClear()
+            }}
+          >
+            {t('labels.removeFromLabel')}
+          </Button>
+        )}
+        {/* The measured container is THIS one, not the bar: the checkbox, the count and the
           remove-from-label button are a prefix of unknown width, and `flex: 1` plus `min-inline-size:
           0` makes the hook's `clientWidth` exactly the room the actions actually have. */}
-      <div ref={actionsRef} className={styles.bulkActions}>
-        {bulkActions.slice(0, visibleActions).map((action) => (
-          <IconButton
-            key={action.id}
-            ref={action.popover === true ? labelButtonRef : null}
-            label={action.label}
-            variant="ghost"
-            unavailableReason={action.unavailableReason}
-            aria-haspopup={action.popover === true ? 'menu' : undefined}
-            aria-expanded={action.popover === true ? labelsOpen : undefined}
-            onClick={action.onSelect}
-          >
-            <action.icon className={action.iconClassName} />
-          </IconButton>
-        ))}
-        {menuItems.length > 0 && (
-          <span ref={overflowRef} {...{ [OVERFLOW_TRIGGER_ATTR]: '' }}>
-            <Menu
-              triggerLabel={t('list.actions.more')}
-              trigger={<Ellipsis aria-hidden="true" />}
-              align="end"
-              triggerVariant="toolbar"
-              items={menuItems}
-            />
-          </span>
+        <div ref={actionsRef} className={styles.bulkActions}>
+          {bulkActions.slice(0, visibleActions).map((action) => (
+            <IconButton
+              key={action.id}
+              ref={action.popover === true ? labelButtonRef : null}
+              label={action.label}
+              variant="ghost"
+              unavailableReason={action.unavailableReason}
+              aria-haspopup={action.popover === true ? 'menu' : undefined}
+              aria-expanded={action.popover === true ? labelsOpen : undefined}
+              onClick={action.onSelect}
+            >
+              <action.icon className={action.iconClassName} />
+            </IconButton>
+          ))}
+          {menuItems.length > 0 && (
+            <span ref={overflowRef} {...{ [OVERFLOW_TRIGGER_ATTR]: '' }}>
+              <Menu
+                triggerLabel={t('list.actions.more')}
+                trigger={<Ellipsis aria-hidden="true" />}
+                align="end"
+                triggerVariant="toolbar"
+                items={menuItems}
+              />
+            </span>
+          )}
+        </div>
+        {labelsOpen && (
+          <LabelMenu ids={ids} anchorRef={labelAnchorRef} onClose={() => setLabelsOpen(false)} />
         )}
       </div>
-      {labelsOpen && (
-        <LabelMenu ids={ids} anchorRef={labelAnchorRef} onClose={() => setLabelsOpen(false)} />
-      )}
+      {step !== null && <div className={styles.bulkStep}>{step}</div>}
     </div>
   )
 }

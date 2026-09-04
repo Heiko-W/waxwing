@@ -49,12 +49,18 @@
   min-block-size: 0;
 }
 
+/* The bar and the second step of select-all (R-08 stage 2) as one block. The rule below the bar
+   moved here so the two rows read as one strip rather than as two stacked bars — the step is a
+   continuation of the sentence the count started, not a second toolbar. */
+.bulkBarStack {
+  border-block-end: 1px solid var(--waxwing-border);
+}
+
 .bulkBar {
   display: flex;
   align-items: center;
   gap: var(--waxwing-space-2);
   padding: var(--waxwing-space-2) var(--waxwing-space-3);
-  border-block-end: 1px solid var(--waxwing-border);
   flex-wrap: nowrap;
   /* No `overflow-x: auto` any more. It was the reason this bar could ship 23px wider than its own
      column and still look correct to every test: the last action sat 11px outside the container,
@@ -103,6 +109,20 @@
   font-size: var(--waxwing-text-sm);
   color: var(--waxwing-text-muted);
   margin-inline-end: auto;
+}
+
+/* "Select all 300", and the way back out of it.
+   Its own row under the actions rather than a control inside them: `.bulkBar` above does not wrap
+   and hands its tail to an overflow menu sized by the width the actions have left, so a text button
+   in that line costs an action at every width and two of them on a phone. Here it wraps freely and
+   the label can take a second line at 320px without pushing anything off the edge. `space-1` of top
+   padding only — the bar's own `space-2` is already above it, and the pair should read as one strip. */
+.bulkStep {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding: 0 var(--waxwing-space-3) var(--waxwing-space-1);
 }
 
 /* Virtual scroll container. */

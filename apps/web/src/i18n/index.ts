@@ -11,6 +11,7 @@
 import i18next from 'i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
 import { initReactI18next } from 'react-i18next'
+import { formatNumber } from './formatters'
 
 /**
  * Every language with a bundle under `./locales/<tag>/common.json`, alphabetical by tag.
@@ -145,6 +146,35 @@ function applyLanguage(lng: string): void {
   document.documentElement.dir = RTL_LANGUAGES.includes(lng) ? 'rtl' : 'ltr'
 }
 
+/**
+ * `{{count, number}}` — a number in a sentence, written the way the reader's language writes it.
+ *
+ * WHY IN THE INTERPOLATOR and not at the call site. The obvious shape,
+ * `t('list.selected', { count: formatNumber(count) })`, breaks the sentence it is formatting:
+ * i18next picks the plural form FROM `count`, and a string selects nothing — Russian would then
+ * serve one form for 1, 2 and 5, in a bundle that has all four. The format spec keeps `count` a
+ * number for the resolver and formats it only on the way into the text, which is what the spec is
+ * for. (Where there is no plural to resolve, handing over a pre-formatted string stays fine and
+ * four call sites still do it: `QuotaPanel`, `ServerSection`, the demo mailbox list.)
+ *
+ * WHY OVERRIDE a formatter i18next already has — and it does, `number` is built in and would make
+ * the bundles above work with this function deleted (verified by removing it: the tests stay
+ * green). The reason is not function but SINGULARITY: i18next builds `Intl.NumberFormat` out of its
+ * own cache, `formatNumber` is the one this codebase documents, tests and tunes, and two of them are
+ * two things that can disagree the day either grows an option.
+ *
+ * It also formats in the language the READER is in rather than the one the string was resolved in —
+ * `formatNumber` reads `i18next.resolvedLanguage`, while what i18next passes a formatter is the
+ * language the lookup landed in. Those differ only on a fallback, which a complete bundle set (the
+ * locale gate enforces one) does not produce today; the point is that the number and the words
+ * around it cannot disagree about the locale.
+ */
+function registerNumberFormat(): void {
+  i18next.services.formatter?.add('number', (value) =>
+    typeof value === 'number' ? formatNumber(value) : String(value),
+  )
+}
+
 export async function initI18n(): Promise<void> {
   const lng = detectLanguage()
   const bundle = await loadLocale(lng)
@@ -163,6 +193,7 @@ export async function initI18n(): Promise<void> {
       interpolation: { escapeValue: false },
     })
 
+  registerNumberFormat()
   applyLanguage(lng)
 }
 

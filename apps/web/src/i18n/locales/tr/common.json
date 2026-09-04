@@ -1042,9 +1042,13 @@
     "answered": "Yanıtlandı",
     "select": "İletiyi seç",
     "selectAll": "Tümünü seç",
-    "selected": "{{count}} ileti seçildi",
-    "selectedOfTotal": "{{total}} iletiden {{count}} tanesi seçildi",
+    "selected": "{{count, number}} ileti seçildi",
+    "selectedOfTotal": "{{total, number}} iletiden {{count, number}} tanesi seçildi",
     "clearSelection": "Seçimi kaldır",
+    "selectAllInQuery": "{{total, number}} iletinin tümünü seç",
+    "selectAllOffline": "Çevrimdışısınız. Klasörün tamamı yalnızca bağlantı varken seçilebilir.",
+    "selectAllTooMany": "{{max, number}} iletiden fazla — tek adımda seçmek için çok fazla.",
+    "selectAllFailed": "Klasör şu anda okunamadı — seçim değişmedi.",
     "actions": {
       "archive": "Arşivle",
       "delete": "Sil",
@@ -1083,7 +1087,7 @@
     },
     "viewOptionsUnavailable": "Sıralama ve konuşma görünümü yalnızca klasörler için geçerlidir.",
     "confirmDeleteBody_one": "Bu ileti kalıcı olarak silinecek. Bu işlem geri alınamaz.",
-    "confirmDeleteBody_other": "Bu {{count}} ileti kalıcı olarak silinecek. Bu işlem geri alınamaz.",
+    "confirmDeleteBody_other": "Bu {{count, number}} ileti kalıcı olarak silinecek. Bu işlem geri alınamaz.",
     "loadMore": "Daha fazla yükle",
     "loading": "İletiler yükleniyor",
     "stale": "Bu liste güncel değil ve bir sonraki eşitlemede yenilenecek.",
@@ -1450,8 +1454,8 @@
     "findLarge": "Büyük iletileri bul",
     "results": {
       "empty": "Aramanızla eşleşen ileti yok. Tüm klasörleri deneyin ya da daha az sözcük kullanın.",
-      "count_one": "{{count}} sonuç",
-      "count_other": "{{count}} sonuç"
+      "count_one": "{{count, number}} sonuç",
+      "count_other": "{{count, number}} sonuç"
     },
     "chipsLabel": "Etkin filtreler",
     "chipsCount_one": "{{count}} filtre etkin",

@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
-import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
+import { READ_BULK, READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
 import { revealPasswordForm, SYNC_BUDGET_MS } from './helpers'
 import { noOverflow } from './no-overflow'
 
@@ -110,6 +110,53 @@ test('the reading pane keeps its actions on one row, and none of them out of rea
   expect(inBar.size, 'the bar is shorter than the full action list').toBeLessThan(
     ALL_ACTIONS.length,
   )
+})
+
+/**
+ * The bulk bar's second step (FR-LST-04, R-08 stage 2) on the tier between the two this repo tests.
+ *
+ * A tablet is where the bar is tightest for a reason a phone is not: the list is a COLUMN beside the
+ * reading pane rather than the whole screen, so the bar gets ~420px of an 834px viewport — narrower
+ * than the phone's full width — and touch targets are at their 44px minimum (`hasTouch` above is
+ * what makes that true here). B49 found exactly this shape in the reading pane's action bar, 11px
+ * outside its own container, at exactly this width.
+ */
+test('the second step of select-all fits a tablet', async ({ page }) => {
+  await page.setViewportSize({ width: 834, height: 1112 })
+  // On this tier the folder tree is a DRAWER, not a rail: the treeitems are in the DOM and none of
+  // them is visible until it is opened. (Found by this test — the click waited 60 s on an element
+  // Playwright had already resolved.)
+  await page.getByRole('button', { name: 'Show folders' }).click()
+  await page.getByRole('treeitem', { name: new RegExp(READ_BULK.folder) }).click()
+  await expect(messageList(page).getByText(READ_BULK.subject(1), { exact: true })).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
+
+  // Grouped, because `{{count, number}}` is what puts the separator there and a three-digit folder
+  // could not tell the formatted number from the raw digits it replaced. en-US is pinned by the
+  // config, as it is for every English label this suite asserts.
+  const grouped = READ_BULK.count.toLocaleString('en-US')
+
+  await messageList(page).getByRole('checkbox', { name: 'Select message' }).first().click()
+  await page.getByRole('checkbox', { name: 'Select all' }).click()
+  await expect(page.getByText(`50 of ${grouped} selected`)).toBeVisible()
+
+  const step = page.getByRole('button', { name: `Select all ${grouped}` })
+  await expect(step).toBeVisible()
+  await noOverflow(page, 'tablet: bulk bar offering the second step')
+
+  await step.click()
+  await expect(page.getByText(`${grouped} selected`, { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Clear selection' })).toBeVisible()
+  await noOverflow(page, 'tablet: bulk bar over the whole folder')
+
+  // And the step really is its own row: the button sits BELOW the count, not beside it, which is
+  // what keeps the actions' measured width the same as it was without a second step.
+  const [countBox, stepBox] = await Promise.all([
+    page.getByText(`${grouped} selected`, { exact: true }).boundingBox(),
+    page.getByRole('button', { name: 'Clear selection' }).boundingBox(),
+  ])
+  expect(stepBox?.y ?? 0).toBeGreaterThan(countBox?.y ?? 0)
 })
 
 for (const tier of TIERS) {
