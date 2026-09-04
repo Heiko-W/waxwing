@@ -4637,7 +4637,14 @@ Fundstelle im aktuellen Stand nachgeprüft: `port.ts:388-389` gibt weiterhin nur
 
 ### N-02 — [LOW] Ein gerade geöffneter Server-Entwurf bekommt den Status `pending`, wodurch der R-12-Schutz beim ersten Schließen nicht greift
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+`adoptServerDraft` schreibt `status: 'synced'`. Die Semantik von `DraftSyncStatus` steht jetzt als
+Kommentar an der Typdefinition (`sync/db.ts`): der Wert ist eine Aussage über den INHALT dieser Zeile
+gegenüber der Server-Kopie, nie darüber, wie die Zeile entstanden ist — `synced` heißt „nichts
+offen“ und setzt eine `serverEmailId` voraus. Alle Leser geprüft: Crash-Restore überspringt die Zeile
+(der Text liegt im Entwürfe-Ordner), `flushDraft` spart den Roundtrip, `stampDraftError`/`retryFailed`
+setzen weiterhin `pending`/`error` und bleiben unberührt. Nebeneffekt: ein Server-Entwurf mit `bcc`
+verliert es beim reinen Öffnen und Schließen nicht mehr, weil gar nicht mehr geschrieben wird.
 
 **Kategorie / Bereich:** correctness / Compose
 

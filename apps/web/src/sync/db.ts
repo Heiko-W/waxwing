@@ -647,6 +647,28 @@ export interface SerializedSendOptions {
   requireTls: boolean
 }
 
+/**
+ * What a {@link DraftRow} owes the SERVER. It is a statement about this row's CONTENT versus the
+ * Drafts-mailbox copy named by `serverEmailId` — never about how the row came to exist (N-02).
+ *
+ *  - `pending` — the row holds something the server does not have. Either a `saveDraft` is queued
+ *    for it, or one is owed (the Drafts mailbox has not synced in yet, no engine is running). This
+ *    is the state a keystroke produces, and it is the state `retryFailed` restores when it re-queues
+ *    a rejected save. Crash-restore reopens these rows: the text exists nowhere else.
+ *  - `synced` — the row IS the server copy; nothing is owed. Written when a save is confirmed, and
+ *    when a Drafts message is opened into the composer (the row is created to CARRY the
+ *    `serverEmailId`, and at that moment it is a copy of what the server has). Two readers depend on
+ *    exactly this meaning: crash-restore SKIPS these rows (the content is safe in Drafts), and
+ *    `flushDraft` skips the server round trip when the content still matches — which is why opening
+ *    a draft and closing it again untouched must not cost a `create`+`destroy` (R-12).
+ *  - `sending` — claimed by the send pipeline (M2.8). Not an editable draft any more: crash-restore
+ *    skips it, and a concurrent save's reconcile must not overwrite the status back to `synced`.
+ *  - `error` — the last server write for this row was REJECTED; `errorKind` says which pipeline
+ *    stamped it. A `save` error still holds unsaved content (crash-restore reopens it); a `send`
+ *    error is surfaced live by the notifier.
+ *
+ * `synced` therefore requires a `serverEmailId`, and a row without one is never `synced`.
+ */
 export type DraftSyncStatus = 'pending' | 'synced' | 'sending' | 'error'
 
 /**
