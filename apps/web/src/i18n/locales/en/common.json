@@ -1042,12 +1042,12 @@
     "answered": "Answered",
     "select": "Select message",
     "selectAll": "Select all",
-    "selected": "{{count}} selected",
-    "selectedOfTotal": "{{count}} of {{total}} selected",
+    "selected": "{{count, number}} selected",
+    "selectedOfTotal": "{{count, number}} of {{total, number}} selected",
     "clearSelection": "Clear selection",
-    "selectAllInQuery": "Select all {{total}}",
+    "selectAllInQuery": "Select all {{total, number}}",
     "selectAllOffline": "You are offline. The whole folder can only be selected while connected.",
-    "selectAllTooMany": "More than {{max}} messages — too many to select in one step.",
+    "selectAllTooMany": "More than {{max, number}} messages — too many to select in one step.",
     "selectAllFailed": "The folder could not be read just now — the selection is unchanged.",
     "actions": {
       "archive": "Archive",
@@ -1087,7 +1087,7 @@
     },
     "viewOptionsUnavailable": "Sorting and conversation view apply to folders only.",
     "confirmDeleteBody_one": "This message will be permanently deleted. This can’t be undone.",
-    "confirmDeleteBody_other": "These {{count}} messages will be permanently deleted. This can’t be undone.",
+    "confirmDeleteBody_other": "These {{count, number}} messages will be permanently deleted. This can’t be undone.",
     "loadMore": "Load more",
     "loading": "Loading messages",
     "stale": "This list is out of date and will refresh on the next sync.",
@@ -1454,8 +1454,8 @@
     "findLarge": "Find large messages",
     "results": {
       "empty": "No messages match your search. Try all folders, or fewer words.",
-      "count_one": "{{count}} result",
-      "count_other": "{{count}} results"
+      "count_one": "{{count, number}} result",
+      "count_other": "{{count, number}} results"
     },
     "chipsLabel": "Active filters",
     "chipsCount_one": "{{count}} filter active",

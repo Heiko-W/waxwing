@@ -3090,10 +3090,10 @@ describe('select all in the folder, not just the window (R-08 stage 2)', () => {
     renderList()
     await selectTheWindow(user)
 
-    const button = await screen.findByRole('button', { name: 'Select all 50000' })
+    const button = await screen.findByRole('button', { name: 'Select all 50,000' })
     expect(button).toHaveAttribute('aria-disabled', 'true')
     expect(
-      screen.getByText('More than 10000 messages — too many to select in one step.'),
+      screen.getByText('More than 10,000 messages — too many to select in one step.'),
     ).toBeInTheDocument()
     await user.click(button)
     expect(collectQueryIds).not.toHaveBeenCalled()
@@ -3113,7 +3113,7 @@ describe('select all in the folder, not just the window (R-08 stage 2)', () => {
 
     expect(await screen.findByText('20 of 300 selected')).toBeInTheDocument()
     expect(
-      await screen.findByText('More than 10000 messages — too many to select in one step.'),
+      await screen.findByText('More than 10,000 messages — too many to select in one step.'),
     ).toBeInTheDocument()
   })
 

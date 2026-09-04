@@ -1042,12 +1042,12 @@
     "answered": "Beantwoord",
     "select": "Bericht selecteren",
     "selectAll": "Alles selecteren",
-    "selected": "{{count}} geselecteerd",
-    "selectedOfTotal": "{{count}} van {{total}} geselecteerd",
+    "selected": "{{count, number}} geselecteerd",
+    "selectedOfTotal": "{{count, number}} van {{total, number}} geselecteerd",
     "clearSelection": "Selectie opheffen",
-    "selectAllInQuery": "Alle {{total}} selecteren",
+    "selectAllInQuery": "Alle {{total, number}} selecteren",
     "selectAllOffline": "Je bent offline. De hele map kan alleen worden geselecteerd als je verbonden bent.",
-    "selectAllTooMany": "Meer dan {{max}} berichten — te veel om in één stap te selecteren.",
+    "selectAllTooMany": "Meer dan {{max, number}} berichten — te veel om in één stap te selecteren.",
     "selectAllFailed": "De map kon nu niet worden gelezen — de selectie is ongewijzigd.",
     "actions": {
       "archive": "Archiveren",
@@ -1087,7 +1087,7 @@
     },
     "viewOptionsUnavailable": "Sorteren en de gespreksweergave gelden alleen voor mappen.",
     "confirmDeleteBody_one": "Dit bericht wordt definitief verwijderd. Dit kan niet ongedaan worden gemaakt.",
-    "confirmDeleteBody_other": "Deze {{count}} berichten worden definitief verwijderd. Dit kan niet ongedaan worden gemaakt.",
+    "confirmDeleteBody_other": "Deze {{count, number}} berichten worden definitief verwijderd. Dit kan niet ongedaan worden gemaakt.",
     "loadMore": "Meer laden",
     "loading": "Berichten laden",
     "stale": "Deze lijst is verouderd en wordt bij de volgende synchronisatie ververst.",
@@ -1461,8 +1461,8 @@
     "findLarge": "Grote berichten zoeken",
     "results": {
       "empty": "Geen enkel bericht komt overeen met je zoekopdracht. Probeer alle mappen, of minder woorden.",
-      "count_one": "{{count}} resultaat",
-      "count_other": "{{count}} resultaten"
+      "count_one": "{{count, number}} resultaat",
+      "count_other": "{{count, number}} resultaten"
     },
     "chipsLabel": "Actieve filters",
     "chipsCount_one": "{{count}} filter actief",

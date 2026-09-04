@@ -1042,12 +1042,12 @@
     "answered": "Beantwortet",
     "select": "Nachricht auswählen",
     "selectAll": "Alle auswählen",
-    "selected": "{{count}} ausgewählt",
-    "selectedOfTotal": "{{count}} von {{total}} ausgewählt",
+    "selected": "{{count, number}} ausgewählt",
+    "selectedOfTotal": "{{count, number}} von {{total, number}} ausgewählt",
     "clearSelection": "Auswahl aufheben",
-    "selectAllInQuery": "Alle {{total}} auswählen",
+    "selectAllInQuery": "Alle {{total, number}} auswählen",
     "selectAllOffline": "Sie sind offline. Der ganze Ordner lässt sich nur mit Verbindung auswählen.",
-    "selectAllTooMany": "Mehr als {{max}} Nachrichten — zu viele, um sie in einem Schritt auszuwählen.",
+    "selectAllTooMany": "Mehr als {{max, number}} Nachrichten — zu viele, um sie in einem Schritt auszuwählen.",
     "selectAllFailed": "Der Ordner ließ sich gerade nicht lesen — die Auswahl bleibt unverändert.",
     "actions": {
       "archive": "Archivieren",
@@ -1087,7 +1087,7 @@
     },
     "viewOptionsUnavailable": "Sortierung und Konversationsansicht gelten nur für Ordner.",
     "confirmDeleteBody_one": "Diese Nachricht wird endgültig gelöscht. Das kann nicht rückgängig gemacht werden.",
-    "confirmDeleteBody_other": "Diese {{count}} Nachrichten werden endgültig gelöscht. Das kann nicht rückgängig gemacht werden.",
+    "confirmDeleteBody_other": "Diese {{count, number}} Nachrichten werden endgültig gelöscht. Das kann nicht rückgängig gemacht werden.",
     "loadMore": "Mehr laden",
     "loading": "Nachrichten werden geladen",
     "stale": "Diese Liste ist nicht aktuell und wird bei der nächsten Synchronisation aktualisiert.",
@@ -1454,8 +1454,8 @@
     "findLarge": "Große Nachrichten finden",
     "results": {
       "empty": "Keine Nachrichten entsprechen Ihrer Suche. Versuchen Sie es in allen Ordnern oder mit weniger Wörtern.",
-      "count_one": "{{count}} Treffer",
-      "count_other": "{{count}} Treffer"
+      "count_one": "{{count, number}} Treffer",
+      "count_other": "{{count, number}} Treffer"
     },
     "chipsLabel": "Aktive Filter",
     "chipsCount_one": "{{count}} Filter aktiv",
