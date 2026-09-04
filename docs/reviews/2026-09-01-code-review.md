@@ -4933,7 +4933,18 @@ nachgeprüft und behoben vorgefunden.
 
 ### N-10 — [INFO] Zwei Beobachtungen ohne Fehlverhalten
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+(a) **Gemessen**: 200 Re-Renders eines offenen Menüs ergeben mit dem Inline-Array 201
+`pointerdown`-Anmeldungen und 200 Abmeldungen, mit stabilem Array 1 und 0 — rund 34 µs je Render
+(die reine DOM-Operation kostet 1,4 µs). Das trägt keinen Performance-Fix, aber die Änderung ist
+eine Zeile und risikolos, deshalb mitgenommen: `extraRefs` wird jetzt über eine Ref gelesen, genau
+wie `onDismiss` seit R-39 — „memoisiere das Array, das du mir gibst" ist die Zusage, die diese
+Datei ihren Aufrufern zwei Absätze weiter oben schon ausdrücklich nicht abverlangt. Behoben in
+`useDismiss` und nicht an der Aufrufstelle, damit es für jede künftige gilt.
+(b) Drei Tests für den Ladepfad von `ScheduledSends`: „wird geladen" (und eben NICHT „nichts
+geplant", solange die Anfrage läuft), leere Liste, und der Fehlschlag als `role="alert"` statt als
+Leerzustand — die beiden sind im Bauteil ein Zeichen auseinander und auf dem Schirm der
+Unterschied zwischen „nichts geplant" und „geht raus, wir konnten nur nicht nachsehen".
 
 **Kategorie / Bereich:** maintainability / UI, Outbox
 

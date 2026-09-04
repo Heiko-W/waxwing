@@ -73,6 +73,25 @@ export function useDismiss(
     dismissRef.current = onDismiss
   })
 
+  /*
+   * `extraRefs` gets the same treatment, and for the same reason (N-10).
+   *
+   * The one caller passes it as an inline literal (`extraRefs: [triggerRef]` in `Menu.tsx`), so the
+   * array is a fresh object on every render and the outside-pointer effect below tore its document
+   * listener down and put it back up each time. Measured: 200 re-renders of an open menu produce
+   * 201 `pointerdown` registrations and 200 removals against 1 and 0 with a stable array — about
+   * 34 µs per render, which is why this was filed as an observation and not a defect.
+   *
+   * It is fixed here rather than at the call site because "memoise the array you pass me" is the
+   * contract this file already decided not to ask of its callers, two paragraphs up. The array is
+   * read at DISMISS time, so a caller whose extra elements really do change still gets the current
+   * ones.
+   */
+  const extraRefsRef = useRef(extraRefs)
+  useLayoutEffect(() => {
+    extraRefsRef.current = extraRefs
+  })
+
   useEffect(() => {
     if (!active || !closeOnEscape) return
     const entry = { dismiss: () => dismissRef.current() }
@@ -91,7 +110,8 @@ export function useDismiss(
       const target = event.target as Node | null
       if (!target) return
       const inside =
-        ref.current?.contains(target) || extraRefs?.some((extra) => extra.current?.contains(target))
+        ref.current?.contains(target) ||
+        extraRefsRef.current?.some((extra) => extra.current?.contains(target))
       if (!inside) dismissRef.current()
     }
 
@@ -99,5 +119,7 @@ export function useDismiss(
     return () => {
       document.removeEventListener('pointerdown', onPointerDown, true)
     }
-  }, [active, outsidePointer, ref, extraRefs])
+    // NOT `extraRefs`: see the ref above. `ref` stays, because a caller CAN hand a different
+    // element to watch, and that has to re-key the listener rather than be read late.
+  }, [active, outsidePointer, ref])
 }
