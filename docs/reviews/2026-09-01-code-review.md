@@ -4674,7 +4674,19 @@ Stand nachgeprüft.
 
 ### N-03 — [LOW] Die Umwandlung nach Klartext normalisiert Leerraum und verliert im Klartextmodus Einrückungen
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Bewusst ANDERS gelöst als vorgeschlagen: ein globales `preserve: true` (also `preformatted` an der
+Wurzel) hätte auch den Leerraum FREMDER HTML-Mails erhalten — ein zitierter Reply im Klartextmodus
+hätte die Zeilenumbrüche und Einrückungen des Absender-Markups bekommen. Stattdessen markiert
+`plainTextToHtml` den Leerraum, den der Schreiber getippt hat (Einrückung und Läufe ab zwei Zeichen
+als `&nbsp;`, wie es jeder contenteditable-Editor tut), und `htmlToPlainText(html, {
+keepTypedWhitespace: true })` bringt genau den zurück; gewöhnlicher Leerraum wird weiterhin normalisiert.
+Zusätzlich war ein `<div><br></div>` — die Schreibweise für eine LEERZEILE — bisher komplett verschluckt:
+das ist jetzt in BEIDEN Modi eine Leerzeile. Aufrufer: Editor-Seed (2×) und, abweichend vom
+Lösungsansatz, der Sendepfad bei `plainText`-Entwürfen — dort ist der `text/plain`-Teil keine
+abgeleitete Alternative, sondern der Text selbst; alle übrigen Aufrufer (Mail-Alternative,
+Leer-Prüfung, Signatur, Abwesenheitsnotiz) normalisieren unverändert. Bekannte Grenze: ein TAB gilt
+weiter als Layout (dokumentiert an `ConvertOptions`).
 
 **Kategorie / Bereich:** correctness (Datenverlust beim Wechsel) / Compose
 

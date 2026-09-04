@@ -108,7 +108,12 @@ export function RichTextEditor({
   const mode = plainText ? 'plain' : 'rich'
   const [active, setActive] = useState<ActiveFormats>(NO_ACTIVE_FORMATS)
   const [ready, setReady] = useState(false)
-  const [plainValue, setPlainValue] = useState(() => (plainText ? htmlToPlainText(value) : ''))
+  // `keepTypedWhitespace`: this seeds a TYPING surface, so indentation, aligned columns and blank
+  // lines have to come back exactly as they were left (N-03). The mail alternative is the other
+  // caller and wants the opposite.
+  const [plainValue, setPlainValue] = useState(() =>
+    plainText ? htmlToPlainText(value, { keepTypedWhitespace: true }) : '',
+  )
   const [linkOpen, setLinkOpen] = useState(false)
 
   const rootRef = useRef<HTMLDivElement>(null)
@@ -180,7 +185,8 @@ export function RichTextEditor({
   // prop, which is one render behind whenever the owner re-renders asynchronously.
   const wasPlainRef = useRef(plainText)
   useEffect(() => {
-    if (plainText && !wasPlainRef.current) setPlainValue(htmlToPlainText(htmlRef.current))
+    if (plainText && !wasPlainRef.current)
+      setPlainValue(htmlToPlainText(htmlRef.current, { keepTypedWhitespace: true }))
     wasPlainRef.current = plainText
   }, [plainText])
 

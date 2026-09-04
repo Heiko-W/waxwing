@@ -4,7 +4,7 @@ import { createRef, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { expectNoA11yViolations } from '../test/axe'
 import type { EditorEngine, EditorFactory } from './editor-engine'
-import { htmlToPlainText } from './html-to-text'
+import { htmlToPlainText, plainTextToHtml } from './html-to-text'
 import { RichTextEditor, type RichTextEditorHandle } from './RichTextEditor'
 
 /** A fake {@link EditorEngine} — jsdom has no real contenteditable/selection, so the wrapper is
@@ -196,8 +196,27 @@ describe('RichTextEditor', () => {
     const textarea = screen.getByRole('textbox', { name: 'Message body' })
     expect(textarea.tagName).toBe('TEXTAREA')
     expect((textarea as HTMLTextAreaElement).value).toBe(
-      htmlToPlainText('<p>Hello</p><p>World</p>'),
+      htmlToPlainText('<p>Hello</p><p>World</p>', { keepTypedWhitespace: true }),
     )
+  })
+
+  /**
+   * N-03. The seed used to run through the MAIL-alternative rules, which collapse whitespace the way
+   * HTML rendering does. Everything that put someone back on this surface — a mode switch, minimize
+   * and restore, a reload — therefore flattened their indentation, their aligned columns and their
+   * blank lines, silently and with no way back.
+   */
+  it('seeds the plain surface with the whitespace the writer typed', async () => {
+    const user = userEvent.setup()
+    const typed = 'def foo():\n    return 1\n\nGruß'
+    const body = plainTextToHtml(typed)
+    const { fake } = renderEditor(body)
+    await whenReady(fake, body)
+
+    await user.click(screen.getByRole('button', { name: 'Plain text' }))
+
+    const textarea = screen.getByRole('textbox', { name: 'Message body' }) as HTMLTextAreaElement
+    expect(textarea.value).toBe(typed)
   })
 
   /**

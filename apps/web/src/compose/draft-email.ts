@@ -187,7 +187,15 @@ export function toEmailCreate(input: {
     textBody: [{ partId: 'text', type: 'text/plain' }],
     ...(plainOnly ? {} : { htmlBody: [{ partId: 'html', type: 'text/html' }] }),
     bodyValues: {
-      text: { value: htmlToPlainText(cleaned), isEncodingProblem: false, isTruncated: false },
+      // `plainOnly` converts with `keepTypedWhitespace`: this part is not a DERIVED alternative
+      // then, it is the message the person typed, so its indentation and blank lines must survive
+      // the round trip through the stored html (N-03). A rich message's text part is derived and
+      // normalizes, as HTML rendering does.
+      text: {
+        value: htmlToPlainText(cleaned, { keepTypedWhitespace: plainOnly }),
+        isEncodingProblem: false,
+        isTruncated: false,
+      },
       ...(plainOnly
         ? {}
         : { html: { value: cleaned, isEncodingProblem: false, isTruncated: false } }),

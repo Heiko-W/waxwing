@@ -9,7 +9,7 @@ import {
   toDraftInit,
   toEmailCreate,
 } from './draft-email'
-import { htmlToPlainText } from './html-to-text'
+import { htmlToPlainText, plainTextToHtml } from './html-to-text'
 import { DEFAULT_SEND_OPTIONS } from './send-options'
 import { applySignature, SIGNATURE_ATTR } from './signature'
 
@@ -195,6 +195,24 @@ describe('toEmailCreate', () => {
     expect(email.htmlBody).toBeUndefined()
     expect(email.bodyValues?.html).toBeUndefined()
     expect(email.bodyValues?.text?.value).toBe('hi there')
+  })
+
+  /**
+   * N-03. A plain-text-only message's `text/plain` part is not a DERIVED alternative — it is what
+   * the person typed, stored as html because the body field is html in both modes. Normalizing it
+   * on the way out sent their indentation and blank lines to nobody.
+   */
+  it('keeps the typed indentation and blank lines of a plain-text-only draft', () => {
+    const typed = 'def foo():\n    return 1\n\nGruß'
+    const plain = serializeDraft(draftWindow({ body: plainTextToHtml(typed), plainText: true }))
+    const email = toEmailCreate({ draft: plain, draftsMailboxId: 'mb-drafts', from: null })
+    expect(email.bodyValues?.text?.value).toBe(typed)
+  })
+
+  it('still normalizes the derived text part of a RICH draft — the counter-test', () => {
+    const rich = serializeDraft(draftWindow({ body: '<p>a\n   b</p>', plainText: false }))
+    const email = toEmailCreate({ draft: rich, draftsMailboxId: 'mb-drafts', from: null })
+    expect(email.bodyValues?.text?.value).toBe('a b')
   })
 
   it('demotes an inline image to an ordinary attachment when there is no html to reference it', () => {
