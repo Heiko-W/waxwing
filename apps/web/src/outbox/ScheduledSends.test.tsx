@@ -14,7 +14,8 @@
 
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { RECONNECT_DEBOUNCE_MS } from '../sync/engine'
 import { ToastProvider } from '../ui'
 import { ScheduledSends } from './ScheduledSends'
 import type { ScheduledClient, ScheduledSend } from './scheduled-client'
@@ -34,6 +35,10 @@ function renderList(client: ScheduledClient) {
   )
   return userEvent.setup()
 }
+
+afterEach(() => {
+  Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+})
 
 describe('ScheduledSends', () => {
   it('says it is asking, and then shows what came back', async () => {
@@ -91,6 +96,66 @@ describe('ScheduledSends', () => {
     expect(alert).toHaveTextContent('The scheduled messages could not be loaded.')
     expect(screen.queryByText('Nothing scheduled.')).not.toBeInTheDocument()
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument()
+  })
+
+  /**
+   * A reconnection reloads the list by itself — the same rule as `CalendarPage` (N-05).
+   *
+   * This one is worse than the calendar's was: there is no "Try again" control here at all, so
+   * without this the reader who opened Settings offline stayed on "could not be loaded" for the
+   * whole session, over messages the server is holding and will deliver regardless. On the EDGE,
+   * and on the engine's own debounce, so a normal connected visit costs no second request and a
+   * flapping line asks once.
+   */
+  it('reloads by itself once the line comes back, without a Try again button to press', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    let connected = false
+    const list = vi.fn(async () => {
+      if (!connected) throw new TypeError('offline')
+      return [HELD]
+    })
+    renderList({ list, cancel: vi.fn(async () => true) })
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The scheduled messages could not be loaded.',
+    )
+    // The premise: there is nothing here to press.
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument()
+
+    connected = true
+    act(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+      window.dispatchEvent(new Event('online'))
+    })
+    expect(list).toHaveBeenCalledTimes(1) // the burst has to settle first
+
+    expect(await screen.findByText('Lunch?', undefined, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('collapses a burst of reconnections into one request', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    const list = vi.fn(async () => [HELD])
+    renderList({ list, cancel: vi.fn(async () => true) })
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(1))
+
+    for (let i = 0; i < 4; i += 1) {
+      act(() => {
+        Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+        window.dispatchEvent(new Event('online'))
+      })
+      act(() => {
+        Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+        window.dispatchEvent(new Event('offline'))
+      })
+    }
+    act(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+      window.dispatchEvent(new Event('online'))
+    })
+
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2), { timeout: 3000 })
+    await new Promise((resolve) => setTimeout(resolve, RECONNECT_DEBOUNCE_MS))
+    expect(list).toHaveBeenCalledTimes(2)
   })
 
   it('says so when the cancel succeeds', async () => {
