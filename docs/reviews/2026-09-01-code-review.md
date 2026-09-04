@@ -4597,7 +4597,12 @@ Die Fundstellen sind gegen den Stand nach allen zehn Blöcken (`802e092`) geprü
 
 ### N-01 — [MEDIUM] Ein abgelehntes Löschen des Vorgänger-Entwurfs beim Senden ist unsichtbar
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+`PortSetResult` trägt jetzt `emailNotDestroyed` UND `emailNotUpdated` aus dem Geschwister-`Email/set`;
+`reconcileSendRemainder` arbeitet sie auf dem ERFOLGS-Pfad ab: der stehen gebliebene Server-Entwurf
+wird als gewöhnlicher `discardDraft` unter der Id der fertigen Zeile nachgereiht (`notFound` ist kein
+Rest), das abgelehnte Quell-Flag wird aus dem persistierten Undo zurückgenommen. Kein Dead Letter —
+die Submission ist nicht idempotent. Begründung als [ADR-039](../adr/039-a-send-finishes-its-leftovers-it-never-fails-for-them.md).
 
 **Kategorie / Bereich:** correctness (stiller Datenverlust) / Compose
 

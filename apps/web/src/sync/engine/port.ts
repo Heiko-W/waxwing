@@ -383,10 +383,18 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
         ...(args.ifInState === undefined ? {} : { ifInState: args.ifInState }),
       })
       const responses = await builder.send()
-      // The submission result drives success/rejection; carry the sibling Email/set create id so the
-      // rejection path can adopt the newly-created draft (which committed regardless of the submission).
-      const emailCreated = toSetResult(responses.get(emailHandle)).created[args.emailCreationId]
-      return { ...toSetResult(responses.get(submission)), emailCreated: emailCreated ?? null }
+      // The submission result drives success/rejection; the sibling Email/set outcome rides along,
+      // because NOTHING else will ever report it. Its create id lets the rejection path adopt the
+      // newly-created draft (which committed regardless of the submission), and its `notDestroyed`/
+      // `notUpdated` are the leftovers a successful send has to finish (N-01) — a prior draft the
+      // server refused to remove, a source message it refused to flag.
+      const emailResult = toSetResult(responses.get(emailHandle))
+      return {
+        ...toSetResult(responses.get(submission)),
+        emailCreated: emailResult.created[args.emailCreationId] ?? null,
+        emailNotDestroyed: emailResult.notDestroyed,
+        emailNotUpdated: emailResult.notUpdated,
+      }
     },
 
     // ── Contacts (M4.2, RFC 9610) ────────────────────────────────────────────────────────────

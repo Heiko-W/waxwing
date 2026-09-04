@@ -306,6 +306,58 @@ describe('createJmapPort', () => {
     expect(result.created).toEqual({ 'sub-1': { id: 'srv-sub' } }) // returns the submission result
   })
 
+  it('submitEmail carries the sibling Email/set rejections out with the result (N-01)', async () => {
+    const { client } = fakeClient((method) => {
+      if (method === Methods.emailSet) {
+        return {
+          accountId: ACC,
+          oldState: '0',
+          newState: '1',
+          created: { 'send-1': { id: 'srv-e' } },
+          updated: null,
+          destroyed: null,
+          notCreated: null,
+          // The server sent the mail but refused to remove the old draft and to flag the source.
+          notUpdated: { 'src-9': { type: 'notFound' } },
+          notDestroyed: { 'old-draft': { type: 'forbidden', description: 'read-only' } },
+        }
+      }
+      if (method === Methods.emailSubmissionSet) {
+        return {
+          accountId: ACC,
+          oldState: '0',
+          newState: '1',
+          created: { 'sub-1': { id: 'srv-sub' } },
+          updated: null,
+          destroyed: null,
+          notCreated: null,
+          notUpdated: null,
+          notDestroyed: null,
+        }
+      }
+      return {}
+    })
+
+    const result = await createJmapPort(client, ACC).submitEmail({
+      emailCreationId: 'send-1',
+      email: { mailboxIds: { 'mb-d': true } } as never,
+      destroyServerDraftId: 'old-draft',
+      submissionCreationId: 'sub-1',
+      identityId: 'id1',
+      envelope: { mailFrom: { email: 'me@x.test' }, rcptTo: [{ email: 'a@x.test' }] },
+      onSuccessUpdateEmail: { 'keywords/$draft': null },
+      sourceUpdate: { id: 'src-9', patch: { 'keywords/$answered': true } },
+    })
+
+    // The SUBMISSION result decides success; without these two the leftovers are invisible.
+    expect(result.created).toEqual({ 'sub-1': { id: 'srv-sub' } })
+    expect(result.emailCreated).toEqual({ id: 'srv-e' })
+    expect(result.emailNotDestroyed).toEqual({
+      'old-draft': { type: 'forbidden', description: 'read-only' },
+    })
+    expect(result.emailNotUpdated).toEqual({ 'src-9': { type: 'notFound' } })
+  })
+
   // ── Contacts (M4.2, RFC 9610) ────────────────────────────────────────────────────────────────
 
   it('fetches all address books with ids: null and maps the response', async () => {
