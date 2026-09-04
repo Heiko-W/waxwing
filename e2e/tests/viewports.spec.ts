@@ -128,27 +128,32 @@ test('the second step of select-all fits a tablet', async ({ page }) => {
   // Playwright had already resolved.)
   await page.getByRole('button', { name: 'Show folders' }).click()
   await page.getByRole('treeitem', { name: new RegExp(READ_BULK.folder) }).click()
-  await expect(messageList(page).getByText(READ_BULK.subject('01'), { exact: true })).toBeVisible({
+  await expect(messageList(page).getByText(READ_BULK.subject(1), { exact: true })).toBeVisible({
     timeout: SYNC_BUDGET_MS,
   })
 
+  // Grouped, because `{{count, number}}` is what puts the separator there and a three-digit folder
+  // could not tell the formatted number from the raw digits it replaced. en-US is pinned by the
+  // config, as it is for every English label this suite asserts.
+  const grouped = READ_BULK.count.toLocaleString('en-US')
+
   await messageList(page).getByRole('checkbox', { name: 'Select message' }).first().click()
   await page.getByRole('checkbox', { name: 'Select all' }).click()
-  await expect(page.getByText(`50 of ${READ_BULK.count} selected`)).toBeVisible()
+  await expect(page.getByText(`50 of ${grouped} selected`)).toBeVisible()
 
-  const step = page.getByRole('button', { name: `Select all ${READ_BULK.count}` })
+  const step = page.getByRole('button', { name: `Select all ${grouped}` })
   await expect(step).toBeVisible()
   await noOverflow(page, 'tablet: bulk bar offering the second step')
 
   await step.click()
-  await expect(page.getByText(`${READ_BULK.count} selected`, { exact: true })).toBeVisible()
+  await expect(page.getByText(`${grouped} selected`, { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Clear selection' })).toBeVisible()
   await noOverflow(page, 'tablet: bulk bar over the whole folder')
 
   // And the step really is its own row: the button sits BELOW the count, not beside it, which is
   // what keeps the actions' measured width the same as it was without a second step.
   const [countBox, stepBox] = await Promise.all([
-    page.getByText(`${READ_BULK.count} selected`, { exact: true }).boundingBox(),
+    page.getByText(`${grouped} selected`, { exact: true }).boundingBox(),
     page.getByRole('button', { name: 'Clear selection' }).boundingBox(),
   ])
   expect(stepBox?.y ?? 0).toBeGreaterThan(countBox?.y ?? 0)

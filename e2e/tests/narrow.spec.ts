@@ -27,6 +27,13 @@ import { noOverflow } from './no-overflow'
 
 const CREDENTIALS = { user: 'alice@waxwing.test', pass: 'waxwing-e2e-Pw1!' }
 
+/**
+ * The bulk folder's size as the reader sees it — grouped, because that is the point of asserting it
+ * (`{{count, number}}`). en-US is what `playwright.read.config.ts` pins for every suite here, so the
+ * separator is a comma; a bundle that stopped formatting would render "1200" and fail these.
+ */
+const GROUPED = READ_BULK.count.toLocaleString('en-US')
+
 const messageList = (page: Page) => page.getByRole('region', { name: 'Messages', exact: true })
 const folders = (page: Page) => page.getByRole('navigation', { name: 'Folders' })
 
@@ -67,6 +74,10 @@ async function openFolder(page: Page, name: string, firstRow: string): Promise<v
  * three things that can go wrong with that at 390px: nothing crosses the viewport edge in either
  * state, the actions stay on one row, and the step really is BELOW the count rather than beside it.
  *
+ * The numbers are asserted WITH their thousands separator ("1,200", en-US being what the config
+ * pins). That is not decoration either: `{{count, number}}` is what puts it there, and a
+ * three-digit folder could not tell the formatted number from the raw digits it replaced.
+ *
  * That last assertion is the one holding the design in place, and it is deliberately not the
  * obvious one. "It does not overflow" cannot tell the two layouts apart: a step rendered INSIDE the
  * bar does not overflow either, because `useActionOverflow` absorbs it — by taking an action off the
@@ -76,7 +87,7 @@ async function openFolder(page: Page, name: string, firstRow: string): Promise<v
  * from stage 1, and the reason a text button in that line is not affordable.)
  */
 test('the second step of select-all fits a phone, in both of its states', async ({ page }) => {
-  await openFolder(page, READ_BULK.folder, READ_BULK.subject('01'))
+  await openFolder(page, READ_BULK.folder, READ_BULK.subject(1))
 
   await messageList(page).getByRole('checkbox', { name: 'Select message' }).first().click()
   await expect(page.getByText('1 selected')).toBeVisible()
@@ -84,24 +95,26 @@ test('the second step of select-all fits a phone, in both of its states', async 
 
   await page.getByRole('checkbox', { name: 'Select all' }).click()
 
-  // The window is 50 of the folder's 60, and the bar says both numbers (stage 1)…
-  await expect(page.getByText(`50 of ${READ_BULK.count} selected`)).toBeVisible()
+  // The window is 50 of the folder's 1200, and the bar says both numbers (stage 1)…
+  const partial = `50 of ${GROUPED} selected`
+  await expect(page.getByText(partial)).toBeVisible()
   // …with the offer to close the gap beside it (stage 2), on its own row.
-  const step = page.getByRole('button', { name: `Select all ${READ_BULK.count}` })
+  const step = page.getByRole('button', { name: `Select all ${GROUPED}` })
   await expect(step).toBeVisible()
   await noOverflow(page, 'bulk bar offering the second step')
   expect(await actionRows(page), 'the actions stay on one row').toBe(1)
-  await expectBelowTheCount(page, step)
+  await expectBelowTheCount(page, partial, step)
 
   await step.click()
 
-  await expect(page.getByText(`${READ_BULK.count} selected`, { exact: true })).toBeVisible()
+  const whole = `${GROUPED} selected`
+  await expect(page.getByText(whole, { exact: true })).toBeVisible()
   // The way back is as visible as the way in — same place, same size, same row.
   const back = page.getByRole('button', { name: 'Clear selection' })
   await expect(back).toBeVisible()
   await noOverflow(page, 'bulk bar over the whole folder')
   expect(await actionRows(page), 'the actions stay on one row').toBe(1)
-  await expectBelowTheCount(page, back)
+  await expectBelowTheCount(page, whole, back)
 
   // And whatever the bar could not hold is still reachable, which is what makes "one row" honest.
   await page.getByRole('button', { name: 'More actions for the selection' }).click()
@@ -116,8 +129,8 @@ test('the second step of select-all fits a phone, in both of its states', async 
 })
 
 /** The step sits on its own row under the counter, not in the line the actions are measured from. */
-async function expectBelowTheCount(page: Page, step: Locator): Promise<void> {
-  const count = page.getByText(/(\d+ of )?\d+ selected/)
+async function expectBelowTheCount(page: Page, countText: string, step: Locator): Promise<void> {
+  const count = page.getByText(countText, { exact: true })
   const [countBox, stepBox] = await Promise.all([count.boundingBox(), step.boundingBox()])
   expect(stepBox?.y ?? 0, 'the step is beside the count, not under it').toBeGreaterThanOrEqual(
     (countBox?.y ?? 0) + (countBox?.height ?? 0),

@@ -12,7 +12,8 @@ export const READ_SUBJECTS: {
 export const READ_BULK: {
   readonly folder: string
   readonly count: number
-  readonly subject: (n: string) => string
+  readonly keyword: string
+  readonly subject: (n: number) => string
 }
 export const READ_PHISHING: {
   readonly forgedAuthserv: string
