@@ -180,7 +180,7 @@ const LRU_TOUCH_INTERVAL_MS = 60_000
  * A flapping connection fires `online` in bursts; each one used to start a full sync pass. Collapse
  * a burst into ONE pass once the line has settled for this long (M3.3).
  */
-const RECONNECT_DEBOUNCE_MS = 750
+export const RECONNECT_DEBOUNCE_MS = 750
 
 /**
  * How often the periodic cache-maintenance pass may run (M3.4). Decoupled from the 60 s safety sweep:

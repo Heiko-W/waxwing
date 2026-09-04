@@ -42,6 +42,7 @@ export {
   getRunningEngines,
   MAINTENANCE_INTERVAL_MS,
   type MaintenanceOutcome,
+  RECONNECT_DEBOUNCE_MS,
   SyncEngine,
   type SyncEngineDeps,
   setActiveEngine,

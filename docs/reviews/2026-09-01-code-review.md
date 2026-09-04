@@ -4746,7 +4746,14 @@ Stand nachgeprüft.
 
 ### N-05 — [LOW] Das Laden der Kalenderliste hängt nicht am Online-Zustand
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Ein zweiter Effekt lädt die Liste bei der WIEDERVERBINDUNG nach — auf die Flanke (`online` war
+`false`), nicht auf `online === true`, damit ein normal verbundener Start keine zweite Anfrage
+kostet. Die Entprellung ist nicht nachgebaut, sondern DIESELBE: `RECONNECT_DEBOUNCE_MS` (750 ms)
+ist jetzt aus `sync/engine` exportiert und wird hier importiert, denn die Leiste ist die Legende
+zu dem Monat, den die Engine mit genau dieser Verzögerung nachholt — zwei getrennte Zahlen wären
+zwei Zahlen, die auseinanderlaufen. Der „Erneut versuchen"-Balken bleibt für den Fehler, der keine
+Verbindungsfrage ist.
 
 **Kategorie / Bereich:** correctness (Offline-Verhalten) / PIM (Kalender)
 
