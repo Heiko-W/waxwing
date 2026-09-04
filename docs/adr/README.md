@@ -67,6 +67,7 @@ Format: lightweight [MADR](https://adr.github.io/madr/), one page maximum.
 | [038](038-creates-are-not-idempotent-and-jmap-offers-no-key.md) | Creates are not idempotent, JMAP offers no key, and the outbox re-sends them anyway | accepted |
 | [039](039-a-send-finishes-its-leftovers-it-never-fails-for-them.md) | A send finishes its own leftovers (a refused draft destroy, a refused source flag); it never fails for them | accepted |
 | [040](040-the-ime-rule-lives-in-ui.md) | The IME rule lives in `ui/`, because `ui/` is the only directory that depends on nothing | accepted |
+| [041](041-the-session-document-lives-with-the-credentials.md) | The JMAP session document is persisted, and it lives with the credentials rather than in the replica | accepted |
 
 Regenerate this table after adding an ADR — it is written by hand, and a missing row is the
 kind of omission nobody notices.

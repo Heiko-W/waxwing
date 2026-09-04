@@ -165,6 +165,13 @@ signed in.
 
 - **"Stay signed in" is opt-in and off by default**, so the ordinary case leaves no token
   behind.
+- **What "stay signed in" keeps, exactly.** The refresh token or the password, wrapped by a
+  non-extractable WebCrypto key, plus a small record naming the method and username — and, since
+  2026-09-04, the **JMAP session document**: your username, the accounts you have access to with
+  their names, the server's four endpoint URLs, its capability list, and an opaque version string.
+  No token is in it and no mail is in it. It is what lets the installed app open your mailbox with
+  no network instead of a sign-in form it cannot submit (FR-OFF-01, [ADR-041](docs/adr/041-the-session-document-lives-with-the-credentials.md)),
+  it is written only when a token or password is, and **either** sign-out deletes it with them.
 - **A bounded offline cache** (`offline.cacheDays`, together with `offline.maxStorageMB`): old
   mail is evicted rather than kept for ever, so a shared machine holds a bounded window and not
   a decade. Two things to be exact about, because both changed after this section was first

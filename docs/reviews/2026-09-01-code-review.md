@@ -60,9 +60,16 @@ die übrigen W-Bezüge sind unvollständige Fixes oder neue Stellen bekannter Mu
 > [ADR-038](../adr/038-creates-are-not-idempotent-and-jmap-offers-no-key.md) (`accepted`); die dort
 > ausformulierte Sonde vor dem Wiederholungsversuch ist ein späterer Ausbau, kein offener Punkt.
 >
-> **Zwei Befunde bleiben offen**, jeder mit Begründung am Eintrag:
-> - **R-78** — die Behebung ändert, was über eine Sitzung hinweg persistiert wird. Das ist eine
->   Produktentscheidung; als Backlog-Eintrag im Implementierungsplan aufgenommen.
+> **R-78 ist seit dem 04.09.2026 erledigt.** Die Produktentscheidung, die es aufhielt — was über
+> eine Sitzung hinweg persistiert wird — hat der Eigentümer an diesem Tag getroffen: das
+> JMAP-Sitzungsdokument darf gespeichert werden, ohne Token und ohne Mailinhalt. Umgesetzt ist es
+> anders als der Lösungsansatz es skizzierte (im verschlüsselten Credential-Store statt im Replica,
+> Begründung am Befund und in
+> [ADR-041](../adr/041-the-session-document-lives-with-the-credentials.md)). Der E2E-Tripwire hat
+> dabei genau das getan, wofür er stand: er ist rot geworden und ist jetzt der
+> Offline-Kaltstart-Test.
+>
+> **Ein Befund bleibt offen**, mit Begründung am Eintrag:
 > - **R-104** — der vorgeschlagene Fix macht den Test nicht grün. Gegen die laufende Fixture
 >   gemessen: ein geteiltes Adressbuch landet im Account der Eigentümerin, und die
 >   Kontakte-Oberfläche fragt nur ein Konto ab. Korrigiert ist nur die falsche Skip-Begründung.
@@ -3191,13 +3198,25 @@ ist `localStorage.getItem('waxwing.connect.target')` null.
 
 ### R-78 — [LOW] Offline-Kaltstart landet auf dem Login-Formular — bekannter, per E2E-Tripwire gepinnter Produktdefekt ohne Tracking-Eintrag
 
-**Status:** [ ] offen
-Bewusst NICHT umgesetzt: bekannter Produktdefekt, per E2E-Tripwire gepinnt
-(`e2e/tests/pwa.spec.ts`), dessen Behebung eine Produktentscheidung mittleren Umfangs ist —
-sie aendert, was ueber eine Sitzung persistiert wird. Als Backlog-Eintrag in
-`docs/implementation-plan.md` §11 aufgenommen (2026-09-02), damit das Must FR-OFF-01 nicht nur
-in einem Testkommentar lebt. Der Tripwire bleibt rot-schlagend, wenn jemand die Luecke
-schliesst.
+**Status:** [x] erledigt
+Am 2026-09-04 vom Eigentümer freigegeben und umgesetzt (ADR-041). Der Tripwire hat getan, wozu er
+da war: die Behebung hat ihn rot gemacht, und er ist jetzt der Offline-Kaltstart-Test, den M3.5
+ursprünglich verlangt hat.
+Abweichung vom Lösungsansatz unten, begründet in ADR-041: das Sitzungsdokument liegt NICHT im
+Replica, sondern im verschlüsselten Credential-Store neben dem `AuthRecord`. Das Replica ist nicht
+verschlüsselt (nur der Auth-Store ist es — der gewählte Ort ist also der, den der Plan-Text
+beschrieb), es überlebt ein einfaches Abmelden, und es ist per ADR-008 kontenübergreifend, während
+das Dokument die accountId erst bestimmt. Im Credential-Store ist die Invariante „das gespeicherte
+Dokument gehört zu den gespeicherten Zugangsdaten" strukturell: geschrieben nur, wenn ein
+`AuthRecord` existiert (Basic ohne „angemeldet bleiben" und der Public-Computer-Modus speichern
+weiterhin nichts), gelöscht in denselben Zeilen, die einen neuen `AuthRecord` schreiben, und mit
+`logout()` samt Datenbank weg.
+Zwei weitere bewusste Verengungen: der Offline-Pfad greift nur bei `TypeError` UND
+`navigator.onLine === false` (bei behaupteter Verbindung ist „Server nicht erreichbar" die
+handlungsfähige Antwort, und es käme nie ein `online`-Event, das den Zustand beendet), und der
+Reconnect läuft als voller Connect statt `refreshSession()` — letzteres ließe `accounts`/`delegated`
+so veraltet, wie sie waren. Beim Zurücklesen wird das Dokument über `sessionFromStore` erneut wie
+eine frische Antwort geprüft (Form UND Origin der vier URLs).
 
 **Kategorie / Bereich:** robustness / App (Session)
 
