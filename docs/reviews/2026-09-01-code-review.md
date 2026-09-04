@@ -4718,7 +4718,24 @@ Meldung (`normalize` kennt `<pre>` nicht, gemeldet aus „compose-restliche") is
 
 ### N-04 — [LOW] Der Kontaktimport reiht je Karte eine eigene Transaktion ein
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+**Zuerst gemessen** (fake-indexeddb, Node 24, 500 importierte Karten, ein Lauf je Zeile;
+Emissionen = Reruns der EINEN geteilten `contactCards`-Subscription aus R-21):
+
+| Ausgangsbestand | je Karte eine Transaktion | Blöcke à 50 | ein Block à 500 |
+| --- | --- | --- | --- |
+| leeres Buch | 4 645 ms / 500 | 283 ms / 10 | 181 ms / 1 |
+| 500 Karten | 15 394 ms / 500 | 450 ms / 10 | 180 ms / 1 |
+| 500 Karten, 50 mit Foto | 16 857 ms / 500 | 494 ms / 10 | 187 ms / 1 |
+
+Die Messung trägt den Fix deutlich: bei `MAX_IMPORT_CARDS = 1000` sind das gut 30 s blockierter
+Hauptthread. Umgesetzt ist die sichere Variante — `SyncEngine.dispatchBatch` legt einen Block in
+EINE `db.transaction`, jede Karte behält aber ihre eigene Outbox-Zeile, ihr eigenes Undo und
+ihren eigenen `ContactCard/set`-Create; eine abgelehnte Karte zieht die anderen 49 nicht mit ins
+Dead Letter. Kein Batch-Intent. Blockgröße 50 und nicht „alles auf einmal": ein Block ist der
+feinste Punkt, an dem die Abbruchprüfung noch VOR dem Schreiben sitzt, und 20 Blöcke sind 20
+Fortschrittsschritte statt eines Sprungs von 0 auf 1000. Zwischen den Blöcken gibt der Import den
+Event-Loop frei, sonst bewegt sich der Balken trotzdem nicht.
 
 **Kategorie / Bereich:** performance / PIM (Kontakte)
 

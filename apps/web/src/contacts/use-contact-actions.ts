@@ -10,6 +10,7 @@ import type { ContactCard, Id, PatchObject } from '@waxwing/jmap'
 import { useMemo } from 'react'
 import {
   enqueueCreateContactCard,
+  enqueueCreateContactCards,
   enqueueDeleteContactCard,
   enqueueUpdateContactCard,
   getEngineFor,
@@ -23,6 +24,14 @@ export interface ContactActions {
    * (falls back to the card's own id when no engine is running, e.g. in a jsdom test).
    */
   create(card: ContactCard): Promise<Id>
+  /**
+   * Create a BLOCK of cards in ONE replica commit — what the importer uses (N-04).
+   *
+   * Still one outbox row, one undo and one `ContactCard/set` create per card: a card the server
+   * refuses dead-letters alone. Only the Dexie transaction is shared, and with it the live-query
+   * rerun that a per-card commit used to cost 500 times over a big import.
+   */
+  createMany(cards: readonly ContactCard[]): Promise<Id[]>
   /** Apply a minimal {@link PatchObject} to a card (state-guarded; a concurrent edit conflicts). */
   update(cardId: Id, patch: PatchObject): void
   /** Delete a card (state-guarded). */
@@ -44,6 +53,12 @@ export function useContactActions(): ContactActions {
         if (engine === null) return card.id
         const { creationId } = await enqueueCreateContactCard(engine, card)
         return creationId
+      },
+      createMany: async (cards) => {
+        const engine = getEngineFor(accountId)
+        if (engine === null) return cards.map((card) => card.id)
+        const { creationIds } = await enqueueCreateContactCards(engine, cards)
+        return creationIds
       },
       update: (cardId, patch) => {
         const engine = getEngineFor(accountId)

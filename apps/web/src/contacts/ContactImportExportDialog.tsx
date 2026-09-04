@@ -55,8 +55,16 @@ export interface ContactImportExportDialogProps {
   readonly allowImport: boolean
   /** The selected/target import book id (used as the default when it is writable). */
   readonly defaultBookId?: Id | undefined
-  /** Create one card (Outbox intent). Injected so the dialog stays engine-decoupled. */
-  readonly createCard: (card: ContactCard) => Promise<Id> | Id
+  /**
+   * Create a BLOCK of cards (one Outbox intent each). Injected so the dialog stays engine-decoupled.
+   *
+   * A block and not a card, because it was a card: 500 separate creates meant 500 Dexie
+   * transactions, and every commit re-ran the shared whole-table contact-card subscription (R-21).
+   * Measured on fake-indexeddb, importing 500 cards into a book that already held 500 took 15.4 s;
+   * in blocks of {@link IMPORT_BLOCK} it takes 450 ms (N-04). The dispatcher still writes one
+   * outbox row per card, so a card the server refuses is refused alone.
+   */
+  readonly createCards: (cards: readonly ContactCard[]) => Promise<readonly Id[]> | readonly Id[]
 }
 
 type ParseState =
@@ -76,6 +84,18 @@ function downloadText(content: string, filename: string, mime: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
+/**
+ * How many cards go into one replica commit.
+ *
+ * Fifty rather than "all of them", and the reason is the progress bar. One commit for the whole
+ * import is the fastest thing measured (180 ms for 500) but it moves the bar once, from nothing to
+ * done, and a Cancel during it can only be honoured after everything is already written. Fifty
+ * costs about 45 ms per block on the slowest fixture measured, so the bar advances twenty times
+ * over a full 1 000-card import and a Cancel lands within a frame or two — while still collapsing
+ * 500 live-query reruns into ten (N-04).
+ */
+const IMPORT_BLOCK = 50
+
 function detectFormat(filename: string, fallback: ContactFormat): ContactFormat {
   const lower = filename.toLowerCase()
   if (lower.endsWith('.json')) return 'jscontact'
@@ -92,7 +112,7 @@ export default function ContactImportExportDialog({
   exportFilenameStem,
   allowImport,
   defaultBookId,
-  createCard,
+  createCards,
 }: ContactImportExportDialogProps) {
   const { t } = useTranslation()
   const importFormatId = useId()
@@ -190,13 +210,18 @@ export default function ContactImportExportDialog({
     setProgress({ done: 0, total: cards.length })
     let done = 0
     try {
-      for (const card of cards) {
-        // Checked BEFORE the write, so Cancel never leaves a half-written card and the count the
-        // dialog reports is the count the address book actually holds.
+      for (let at = 0; at < cards.length; at += IMPORT_BLOCK) {
+        // Checked BEFORE the write, so Cancel never leaves a half-written BLOCK and the count the
+        // dialog reports is the count the address book actually holds. A block is one replica
+        // commit, so this is the finest grain at which that promise can still be kept.
         if (cancelledRef.current) break
-        await createCard(toContactCard(card, targetBook.id))
-        done += 1
+        const block = cards.slice(at, at + IMPORT_BLOCK).map((c) => toContactCard(c, targetBook.id))
+        await createCards(block)
+        done += block.length
         setProgress({ done, total: cards.length })
+        // Back to the event loop between blocks: the progress bar has to actually move, and a
+        // Cancel has to be able to arrive. Without it the whole import is one uninterrupted task.
+        await new Promise((resolve) => setTimeout(resolve, 0))
       }
       setImportedCount(done)
       setParseState({ status: 'idle' })
@@ -204,7 +229,7 @@ export default function ContactImportExportDialog({
       setImporting(false)
       setProgress(null)
     }
-  }, [ready, targetBook, keepDuplicates, createCard])
+  }, [ready, targetBook, keepDuplicates, createCards])
 
   const onExport = useCallback(async (): Promise<void> => {
     setExporting(true)

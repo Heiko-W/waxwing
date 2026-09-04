@@ -27,6 +27,7 @@ export {
   type ContactMutationDispatcher,
   enqueueCreateAddressBook,
   enqueueCreateContactCard,
+  enqueueCreateContactCards,
   enqueueDeleteAddressBook,
   enqueueDeleteContactCard,
   enqueueUpdateAddressBook,
