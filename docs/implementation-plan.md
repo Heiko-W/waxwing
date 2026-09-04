@@ -975,9 +975,12 @@ Spec: FR-LST-01/02/03/04/05/07, FR-ORG-01 (flows). Size: L.
       archive, junk, trash, delete) dispatching over the whole selected id-set via `useMessageActions`
       → outbox (archive/junk/trash resolved via `useMailboxByRole`). **Corrected 2026-09-02 (R-08):
       this line used to read "select-all-in-folder (id-set on the query, not just loaded rows)". It is
-      the LOADED WINDOW, not the query — 50 ids, growing only as `loadMore` pages. The list now says
-      so (mixed-state header box, "50 of 300 selected") instead of promising a scope it does not have;
-      the missing half of FR-LST-04 is in the post-V1 backlog.**
+      the LOADED WINDOW, not the query — 50 ids, growing only as `loadMore` pages. The list says so
+      (mixed-state header box, "50 of 300 selected") instead of promising a scope it does not have.**
+      **Completed 2026-09-04:** a second step in the bulk bar ("Select all {{total}}") pages the whole
+      query's ids out of `Email/query` (`Engine.collectQueryIds`) and selects them, so select-all
+      really does reach the folder. The ids are a snapshot, not a scope (ADR-042), and the selection
+      is capped at 10 000 with the reason on the button (ADR-043).
 - [x] Sorting: date/from/subject/size + unread-first toggle (FR-LST-05) — each sort is its own watched
       query. — `MessageSort` presets; unread-first prepends a `hasKeyword $seen` comparator; each is a
       distinct `folderQueryKey`.
@@ -2631,14 +2634,35 @@ explicit owner decision:
 - ~~Snooze (FR-ORG-03)~~ — **shipped in M5.8**. ~~Scheduled send (FR-CMP-11)~~ — **shipped in
   M5.4**, and SERVER-side rather than the client-side fallback this line assumed. ~~Templates
   (FR-CMP-12)~~ — **shipped in M5.5**.
-- **Select-all-in-folder, the rest of FR-LST-04 (filed 2026-09-02 with R-08).** `selectAll` ticks
-  the loaded `queryCache` window, not the query: in a folder of 300 it selects 50. Stage 1 shipped —
-  the header checkbox is mixed rather than checked and the bar reads "50 of 300 selected", so no
-  scope is promised that is not delivered. Stage 2 is the Gmail pattern: after a select-all over an
-  incomplete window, offer "Select all {{total}}" in the bulk bar and page the remaining ids out of
-  `Email/query` in `limit` chunks (`collectMatchingIds` in the engine is the paginator that already
-  exists). `rights.ts`'s account-floor clause is what keeps the rights verdict sound over ids whose
-  rows are not hydrated, and it is already there.
+- ~~Select-all-in-folder, the rest of FR-LST-04 (filed 2026-09-02 with R-08)~~ — **shipped
+  2026-09-04**, as the sketched Gmail pattern: after a select-all over an incomplete window the bulk
+  bar offers "Select all {{total}}", which pages the remaining ids out of `Email/query` in 500-id
+  chunks and hands them to the selection. The paginator this entry named was extended rather than
+  copied — `collectMatchingIds` and the new `Engine.collectQueryIds` are one `pageQueryIds` — and
+  `rights.ts`'s account floor did the job it was kept for: with 250 of 300 rows unhydrated the
+  verdict falls back to it, which is true on the user's own account and therefore leaves the
+  single-account path unchanged. **The decision the entry did not contain is what "all 300" MEANS
+  between the click and the action (ADR-042): the ids are a SNAPSHOT, not a scope.** Every write here
+  is an outbox intent over an explicit `emailIds` array — that is what makes it durable, replayable
+  offline and undoable — so a scope resolved at dispatch time would resolve on a network round trip,
+  in a path that has already told the user the action was queued, and offline could not resolve at
+  all. So the bar names a NUMBER and never "all": a message that arrives afterwards is not in the set,
+  the count does not move, and the header box goes back to mixed. **Three consequences that were
+  found by building it.** (1) `list-store.ts`'s prune drops any selected id the window no longer
+  lists, which would have taken 250 of the 300 back on the next window publication; under
+  `beyondWindow` it prunes only ids that WERE in the window and left it — the one departure the store
+  can observe. (2) The paged query must use the WINDOW's own `filter`/`sort`/`collapseThreads`: a
+  collapsed query answers one id per thread and which one depends on the sort, so the more robust
+  oldest-first paging order would have selected a different message per thread from the one on
+  screen. (3) A snapshot has to be bounded — two live `useEmailWindow` subscriptions read the whole
+  id-set on every `emails` write, measured at 588 ms per pass over 10 000 ids and 4 s over 50 000 —
+  so **ADR-043** caps it at 10 000 and the button says so, focusably, past that. **Offline, too many,
+  and a folder that grew past the cap under the click are all spoken on the control**
+  (`unavailableReason`); a request that got no answer is not, because the button has to stay
+  pressable for the retry. Undo carries the full set (one inverse `move`, auto-chunked). Measured on
+  a phone (390 × 844) and a tablet (834 × 1112) with `noOverflow` plus a row count, which is what put
+  the step on a row of its own: the bulk bar does not wrap and sizes its overflow menu by what the
+  actions have left, and "50 of 60 selected" beside "Select all 60" is most of a 390px line.
 - ~~The offline cold start, the rest of FR-OFF-01 (filed 2026-09-02 with R-78)~~ — **shipped
   2026-09-04**, and the E2E tripwire that pinned it is now the offline cold-start test M3.5 asked
   for. An installed PWA opened offline booted its shell out of the precache and then landed on the

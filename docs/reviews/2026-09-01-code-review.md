@@ -494,7 +494,35 @@ Papierkorb kein „Delete“. Gegenprüfung: bestätigt.
 
 ### R-08 — [MEDIUM] „Alle auswählen“ wählt nur das geladene 50er-Fenster, zeigt die Kopf-Checkbox aber als vollständig gesetzt — Bulk-Aktionen erfassen den Rest des Ordners nicht
 
-**Status:** [x] erledigt — Stufe 1
+**Status:** [x] erledigt — beide Stufen
+Stufe 2 am 2026-09-04 vom Eigentümer freigegeben und umgesetzt (ADR-042, ADR-043): nach einem
+Select-all über ein unvollständiges Fenster bietet die Bulk-Bar „Alle {{total}} auswählen“, holt die
+Ids der ganzen Query seitenweise per `Email/query` (`Engine.collectQueryIds`, 500er-Chunks, ohne
+`Email/get`) und legt sie in die Selektion. Der im Lösungsansatz genannte Paginierer wurde ERWEITERT
+statt kopiert: `collectMatchingIds` und `collectQueryIds` sind ein `pageQueryIds`. Die Account-Floor-
+Klausel in `rights.ts` hat genau das getan, wofür sie aufgehoben wurde — bei 250 von 300 nicht
+hydrierten Zeilen fällt das Urteil auf sie zurück, was auf dem eigenen Konto wahr ist und den
+Einkonten-Pfad unverändert lässt.
+**Die Entscheidung, die der Lösungsansatz nicht enthielt, ist die Bedeutung von „alle 300“ zwischen
+Klick und Aktion (ADR-042): die Ids sind eine MOMENTAUFNAHME, kein Abonnement.** Jeder Schreibvorgang
+hier ist ein Outbox-Intent über ein explizites `emailIds`-Array — das macht ihn dauerhaft, offline
+wiederholbar und rückgängig-fähig —, ein erst beim Absenden aufgelöster Umfang bräuchte also eine
+Netzrunde in einem Pfad, der dem Nutzer die Aktion bereits bestätigt hat, und offline ginge er gar
+nicht. Deshalb nennt die Leiste eine ZAHL und nie „alle“: eine später eintreffende Nachricht ist
+nicht in der Menge, der Zähler bleibt stehen, und die Kopf-Checkbox wird wieder `indeterminate`.
+Drei Folgen, alle beim Bauen gefunden: (1) `pruneSelection` hätte 250 der 300 bei der nächsten
+Fensterveröffentlichung wieder entfernt — unter `beyondWindow` entfernt es nur Ids, die IM Fenster
+waren und es verlassen haben; (2) die Paginierung muss `filter`/`sort`/`collapseThreads` des Fensters
+verwenden, weil eine kollabierte Query je Thread eine Id liefert und WELCHE von der Sortierung
+abhängt; (3) eine Momentaufnahme braucht eine Obergrenze — zwei Live-`useEmailWindow`-Abos lesen die
+ganze Id-Menge bei jedem `emails`-Schreibvorgang (gemessen: 588 ms je Durchgang bei 10 000 Ids,
+4 s bei 50 000), daher **ADR-043**: Deckel bei 10 000, und der Knopf sagt es. Offline, „zu viele“ und
+„der Ordner ist unter dem Klick über den Deckel gewachsen“ stehen als `unavailableReason` auf dem
+Knopf (fokussierbar, nicht `disabled`); ein Request ohne Antwort nicht, weil der Knopf für den
+Wiederholversuch drückbar bleiben muss. Das Undo trägt die volle Menge (ein inverser `move`,
+auto-gechunkt). Gemessen auf Telefon (390 × 844) und Tablet (834 × 1112) mit `noOverflow` plus
+Zeilenzählung — das ist der Grund, warum der zweite Schritt eine eigene Zeile bekommen hat.
+
 Stufe 1 (ehrliche Oberfläche) ist umgesetzt: `allSelected` verlangt zusätzlich, dass das Fenster die
 ganze Trefferliste ist, sonst zeigt die Kopf-Checkbox `indeterminate` und der Zähler den neuen Key
 `list.selectedOfTotal` („20 von 300 ausgewählt", 14 Bundles). Kommentar in `message-selection.ts`,
@@ -505,9 +533,10 @@ beim Klick `checked: true` und hätte nur erneut alles ausgewählt, statt zu lee
 spiegelt `indeterminate` jetzt nach jedem Commit statt nur bei Änderung des Props — ein nativer Klick
 löscht die Eigenschaft, und bis hierher blieb kein Aufrufer über einen Klick hinweg gemischt.
 
-**Stufe 2 bleibt offen:** „Alle {{total}} auswählen" über alle Treffer (FR-LST-04 Must). Als
+~~**Stufe 2 bleibt offen:** „Alle {{total}} auswählen" über alle Treffer (FR-LST-04 Must). Als
 Backlog-Eintrag in `docs/implementation-plan.md` §11 aufgenommen, mit dem Paginierer
-(`collectMatchingIds`) und der Account-Floor-Klausel als benanntem Ausgangspunkt.
+(`collectMatchingIds`) und der Account-Floor-Klausel als benanntem Ausgangspunkt.~~ — am 2026-09-04
+erledigt, siehe Status oben. FR-LST-04 ist damit vollständig erfüllt.
 
 **Kategorie / Bereich:** correctness / Mail
 
@@ -4499,7 +4528,7 @@ engine …`, exit 0; `engineStrict: true` in `pnpm-workspace.yaml` → `ERR_PNPM
 41. **R-107** und **R-112** — `engines`-Range und `engineStrict` gehören zusammen, sonst bleibt es bei der Warnzeile.
 42. **R-103**, **R-105**, **R-106**, **R-108**, **R-109**, **R-111** — Release- und CI-Hygiene: Versionswächter, `unzip`/mtime, doppeltes DOMPurify, `concurrency`, Fake-Timer-Cleanup, Cache-Header für Theme und Branding.
 43. **R-68**, **R-97**, **R-101**, **R-110**, **R-102** — Kommentare und Doku, die auf falsche Fährten führen; R-102 zuerst, weil `SECURITY.md` eine falsche Zusage enthält.
-44. **R-08** (Stufe 2) — FR-LST-04 tatsächlich erfüllen („Alle {{total}} auswählen“); M, braucht `collectMatchingIds`.
+44. ~~**R-08** (Stufe 2) — FR-LST-04 tatsächlich erfüllen („Alle {{total}} auswählen“); M, braucht `collectMatchingIds`.~~ — erledigt 2026-09-04 (ADR-042, ADR-043).
 
 ## Nicht bestätigt
 
