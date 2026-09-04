@@ -154,6 +154,10 @@ export function RichTextEditor({
       const onInput = (): void => {
         if (debounceRef.current !== undefined) window.clearTimeout(debounceRef.current)
         debounceRef.current = window.setTimeout(() => {
+          // Clear before emitting, exactly as the plain-text arm does: the ref means "typing is
+          // still in flight", and the external-value effect reads it as permission to skip a
+          // reseed. Leaving it set after the timeout has run makes that permission permanent.
+          debounceRef.current = undefined
           const html = toCanonicalHtml(created.getHTML())
           htmlRef.current = html
           lastEmittedRef.current = html
