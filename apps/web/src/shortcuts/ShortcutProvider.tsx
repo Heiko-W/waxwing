@@ -14,7 +14,7 @@
 
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useToast } from '../ui'
+import { isComposingKey, useToast } from '../ui'
 import { isInOverlay, isTextEntryTarget } from './dom'
 import { matchesAny, parseChord } from './keys'
 import { isRunnable, SHORTCUTS, unavailableNow } from './registry'
@@ -77,8 +77,9 @@ export function ShortcutProvider() {
     function onKey(event: KeyboardEvent): void {
       // 1. A component already claimed this key (Squire's ⌘K, the composer's ⌘↵, the grid's arrows).
       if (event.defaultPrevented) return
-      // 2. An IME composition keystroke belongs to the input method.
-      if (event.isComposing || event.keyCode === 229) return
+      // 2. An IME composition keystroke belongs to the input method — the one rule, from `ui/`
+      //    (N-07), never a third spelling of it.
+      if (isComposingKey(event)) return
       // 3. Not while a modal / menu / the composer is up. That one is unconditional: those
       //    surfaces claim their own keys, chords included (Squire's ⌘K, the composer's ⌘↵).
       const target = event.target

@@ -4833,7 +4833,17 @@ nachgeprüft.
 
 ### N-07 — [LOW] Die IME-Regel steht an zwei Orten
 
-**Status:** [ ] offen
+**Status:** [x] erledigt (es waren DREI)
+Beim Zusammenlegen kam eine dritte Fassung dazu: der globale Keydown-Listener
+(`ShortcutProvider.tsx:81`) buchstabierte die Regel ebenfalls aus. Die Prämisse des Befunds hält
+außerdem nicht — `shortcuts` importiert heute schon an sechs Stellen aus `../ui`, darunter
+`isComposingKey` selbst in `CommandPalette.tsx`, und `ui/` ist das EINZIGE Verzeichnis in
+`apps/web/src`, das aus keinem anderen Bereich importiert. Also keine dritte Datei und kein neues
+`lib/`: die Regel bleibt in `ui/`, steht seit R-40 ohnehin im Barrel, und die beiden Kopien rufen
+sie jetzt auf ([ADR-040](../adr/040-the-ime-rule-lives-in-ui.md)). Festgehalten mit einem
+QUELLTEXT-Test statt eines Verhaltenstests: drei Verhaltenstests waren gegen drei Kopien grün —
+genau das war der Zustand. `composition.source.test.ts` zählt `keyCode === 229` im ausgelieferten
+Quelltext und verlangt genau eine Datei.
 
 **Kategorie / Bereich:** maintainability / UI
 
