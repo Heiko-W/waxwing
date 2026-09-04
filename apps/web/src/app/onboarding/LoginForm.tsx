@@ -164,7 +164,10 @@ export function LoginForm({
             variant={oauthPrimary && !basicOpen ? 'primary' : 'secondary'}
             block
             loading={busy}
-            aria-disabled={!oauthAvailable || offline || undefined}
+            // Not a bare `aria-disabled`: that announced the refusal and left the button in full
+            // primary blue, which is a promise to the eye that the attribute has just withdrawn.
+            // Pre-existing for the insecure-origin case; the offline case inherited it.
+            unavailable={!oauthAvailable || offline}
             aria-describedby={oauthAvailable && !offline ? undefined : oauthNoteId}
             onClick={handleOAuth}
           >
@@ -274,7 +277,7 @@ export function LoginForm({
             variant={oauthPrimary && !basicOpen ? 'secondary' : 'primary'}
             block
             loading={busy}
-            aria-disabled={offline || undefined}
+            unavailable={offline}
             // The OAuth note above already carries the sentence when there is one; pointing at it
             // rather than repeating it is what keeps one screen to one statement — and what keeps
             // this from naming an element that is not rendered.

@@ -56,6 +56,11 @@ describe('ConnectForm — offline', () => {
 
     const button = screen.getByRole('button', { name: 'Continue' })
     expect(button).toHaveAttribute('aria-disabled', 'true')
+    // AND IT LOOKS THAT WAY. The first version of this passed `aria-disabled` straight through and
+    // asserted only the attribute: the button announced itself as unavailable and rendered in full
+    // primary blue with `cursor: pointer`, so a sighted reader clicked it and nothing happened.
+    // `ui/Button`'s `unavailable` prop carries both halves; this pins the second one.
+    expect(button.className).toMatch(/unavailable/)
     // Named by the control, so a screen reader reaches it from the button — and VISIBLE, because
     // a statement nobody can read is not a statement.
     const noteId = button.getAttribute('aria-describedby')
@@ -84,6 +89,7 @@ describe('ConnectForm — offline', () => {
 
     const button = screen.getByRole('button', { name: 'Continue' })
     expect(button).not.toHaveAttribute('aria-disabled')
+    expect(button.className).not.toMatch(/unavailable/)
     expect(screen.queryByText(/offline/i)).toBeNull()
   })
 

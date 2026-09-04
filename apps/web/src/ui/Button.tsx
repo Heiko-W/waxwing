@@ -16,7 +16,27 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   /** Show a spinner, mark `aria-busy`, and block activation while a task runs. */
   loading?: boolean
   /**
-   * Why this control cannot act right now — a finished, localized sentence.
+   * This control cannot act right now, and it has to LOOK that way — while staying focusable.
+   *
+   * Renders `aria-disabled`, mirrors `:disabled` visually (dimmed, `not-allowed`) and swallows
+   * activation, but keeps the button in the tab order: `disabled` would remove it, and the reader
+   * who most needs to know why is then the only one who can never reach it (FR-A11Y-01).
+   *
+   * Use this when the explanation is ALREADY ON SCREEN beside the control — an onboarding card has
+   * the room for a sentence, and a note nobody can see is not a statement. Use
+   * {@link unavailableReason} when it does not, which implies this and adds the sentence as a
+   * hidden description.
+   *
+   * The split exists because passing a bare `aria-disabled` through looked like the whole job and
+   * was only half of it: the attribute went through `...rest` while the CLASS that dims the button
+   * did not, so the offline sign-in buttons announced themselves as unavailable to a screen reader
+   * and rendered in full primary blue to everybody else. Found by looking at the screen, not by any
+   * of 5900 tests.
+   */
+  unavailable?: boolean
+  /**
+   * Why this control cannot act right now — a finished, localized sentence. Implies
+   * {@link unavailable}.
    *
    * Renders `aria-disabled` plus an accessible description and deliberately KEEPS the button
    * focusable. `disabled` would remove it from the tab order, which means the one user who most
@@ -49,6 +69,7 @@ export function Button({
   block = false,
   loading = false,
   disabled,
+  unavailable = false,
   unavailableReason,
   type,
   className,
@@ -60,7 +81,11 @@ export function Button({
   const reasonId = useId()
   // `disabled` wins where both apply: a hard-disabled control needs no explanation, and this keeps
   // every existing call site byte-for-byte what it was.
-  const unavailable = unavailableReason !== undefined && !disabled && !loading
+  const refused = (unavailable || unavailableReason !== undefined) && !disabled && !loading
+  // The hidden sentence is the SECOND half and only follows the reason. A control whose reason is
+  // already on screen must not also carry an invisible copy of it — that is the same statement
+  // twice for a screen reader and once for everyone else.
+  const describeReason = refused && unavailableReason !== undefined
   return (
     <>
       <button
@@ -71,15 +96,15 @@ export function Button({
           styles[variant],
           styles[size],
           block && styles.block,
-          unavailable && styles.unavailable,
+          refused && styles.unavailable,
           className,
         )}
         disabled={disabled || loading}
         aria-busy={loading || undefined}
-        aria-disabled={unavailable || undefined}
-        aria-describedby={unavailable ? reasonId : undefined}
+        aria-disabled={refused || undefined}
+        aria-describedby={describeReason ? reasonId : undefined}
         onClick={
-          unavailable ? (event: MouseEvent<HTMLButtonElement>) => event.preventDefault() : onClick
+          refused ? (event: MouseEvent<HTMLButtonElement>) => event.preventDefault() : onClick
         }
         {...rest}
       >
@@ -87,7 +112,7 @@ export function Button({
         <span className={styles.label}>{children}</span>
       </button>
       {/* OUTSIDE the button, so it describes the control without becoming part of its name. */}
-      {unavailable && <VisuallyHidden id={reasonId}>{unavailableReason}</VisuallyHidden>}
+      {describeReason && <VisuallyHidden id={reasonId}>{unavailableReason}</VisuallyHidden>}
     </>
   )
 }

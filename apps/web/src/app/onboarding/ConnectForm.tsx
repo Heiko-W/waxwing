@@ -94,15 +94,16 @@ export function ConnectForm({
         </div>
 
         {/* Offline this asks for a server it cannot be checked against, so it says so rather
-            than failing on the press. Same shape as the unavailable OAuth button in `LoginForm`:
-            `aria-disabled` plus a VISIBLE note the button points at — the sentence has to be read,
-            not only announced, and an onboarding card has the room the mail toolbar does not. */}
+            than failing on the press. `unavailable` rather than `unavailableReason`: the sentence
+            below is VISIBLE, and an onboarding card has the room the mail toolbar does not — but
+            the button still has to LOOK unavailable, which is the half a bare `aria-disabled`
+            silently dropped. */}
         <Button
           type="submit"
           variant="primary"
           block
           loading={busy}
-          aria-disabled={offline || undefined}
+          unavailable={offline}
           aria-describedby={offline ? offlineId : undefined}
         >
           {t('onboarding.connect.submit')}

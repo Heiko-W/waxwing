@@ -63,7 +63,7 @@
  * layout. `prefers-reduced-motion` collapses the duration through the global reset in global.css;
  * the scale still applies, which is correct — it is a state, not an animation.
  */
-.button:active:not(:disabled):not(.unavailable) {
+.button:active:not(:disabled):not(.unavailable):not([aria-disabled="true"]) {
   transform: scale(0.97);
 }
 
@@ -73,8 +73,19 @@
 }
 
 /* Mirrors :disabled visually, but the button stays focusable and keeps its accessible description —
-   a refusal the user is meant to be able to READ has to be reachable by keyboard (see Button.tsx). */
-.button.unavailable {
+   a refusal the user is meant to be able to READ has to be reachable by keyboard (see Button.tsx).
+
+   TWO SELECTORS, and the attribute one is the safety net. The class is what `Button` sets from its
+   `unavailable`/`unavailableReason` props; the attribute is what a caller sets when it passes
+   `aria-disabled` straight through `...rest`. That happened, and the result was the worst version
+   of this control: `aria-disabled="true"` for a screen reader and full primary blue, opacity 1,
+   `cursor: pointer` for everybody else — a button that says it cannot act and looks like it can.
+   `aria-disabled` IS the claim; the appearance has to follow it however it was set.
+
+   Every OTHER control in this app already keys off the attribute (`Menu.module.css`,
+   `labels.module.css`); this one was the exception, which is why it was the one that broke. */
+.button.unavailable,
+.button[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: var(--waxwing-disabled-opacity);
 }

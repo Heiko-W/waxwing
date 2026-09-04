@@ -97,6 +97,10 @@ describe('LoginForm', () => {
 
     const oauth = screen.getByRole('button', { name: 'Sign in' })
     expect(oauth).toHaveAttribute('aria-disabled', 'true')
+    // The appearance half, added after the same gap was found offline: this call site is where the
+    // bare-`aria-disabled` pattern came from, so it had the identical defect — a button that says
+    // it cannot act and renders exactly like one that can.
+    expect(oauth.className).toMatch(/unavailable/)
     expect(
       screen.getByText(/Signing in through the server needs an HTTPS connection/),
     ).toBeInTheDocument()
@@ -471,6 +475,9 @@ describe('LoginForm — offline', () => {
 
     const oauth = screen.getByRole('button', { name: 'Sign in' })
     expect(oauth).toHaveAttribute('aria-disabled', 'true')
+    // And it LOOKS unavailable. A bare `aria-disabled` left it in full primary blue — the claim
+    // reached a screen reader and nothing else.
+    expect(oauth.className).toMatch(/unavailable/)
     // The offline sentence REPLACES the "you sign in on the server itself" explanation rather than
     // joining it: that one describes a redirect that is not going to happen.
     expect(screen.getByText(/offline/i)).toBeInTheDocument()
@@ -517,6 +524,7 @@ describe('LoginForm — offline', () => {
     expect(onBasicSubmit).not.toHaveBeenCalled()
     const submit = screen.getByRole('button', { name: 'Sign in with a password' })
     expect(submit).toHaveAttribute('aria-disabled', 'true')
+    expect(submit.className).toMatch(/unavailable/)
     const noteId = submit.getAttribute('aria-describedby')
     expect(document.getElementById(noteId as string)).toBeVisible()
   })
@@ -554,7 +562,9 @@ describe('LoginForm — offline', () => {
     )
 
     expect(screen.queryByText(/offline/i)).toBeNull()
-    expect(screen.getByRole('button', { name: 'Sign in' })).not.toHaveAttribute('aria-disabled')
+    const oauth = screen.getByRole('button', { name: 'Sign in' })
+    expect(oauth).not.toHaveAttribute('aria-disabled')
+    expect(oauth.className).not.toMatch(/unavailable/)
   })
 
   it('has no accessibility violations', async () => {

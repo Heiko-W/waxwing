@@ -209,11 +209,19 @@ test.describe('M3.10 pwa', () => {
     // OAuth leads, so the control on offer is the server sign-in button; it is `aria-disabled`
     // and the note under it — which normally explains the redirect — carries the offline sentence
     // instead. `Onboarding` reads `navigator.onLine` and hands it to both forms.
-    await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    )
+    const signIn = page.getByRole('button', { name: 'Sign in', exact: true })
+    await expect(signIn).toHaveAttribute('aria-disabled', 'true')
     await expect(page.getByText(/You are offline\./)).toBeVisible()
+    // AND IT LOOKS REFUSED, in a real browser with the real stylesheet — the half that unit tests
+    // structurally cannot see (jsdom computes no styles) and the half that was missing when this
+    // shipped: `aria-disabled="true"` announced to a screen reader, full primary blue and
+    // `cursor: pointer` to everybody else. Measured on the composed result, not on a class name.
+    const painted = await signIn.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { opacity: Number(style.opacity), cursor: style.cursor }
+    })
+    expect(painted.opacity).toBeLessThan(1)
+    expect(painted.cursor).toBe('not-allowed')
   })
 
   test('a real read session leaves no JMAP bytes in Cache Storage', async ({ page }) => {
