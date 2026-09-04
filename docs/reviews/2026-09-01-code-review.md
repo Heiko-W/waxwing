@@ -45,15 +45,22 @@ Zwei Kandidaten wurden bereits in der Gegenprüfung verworfen (PIM-22 als Duplik
 unbegründet) und stehen nur im Anhang. Genau eine Regression aus den Fix-Commits ist belegt (R-05, W-18);
 die übrigen W-Bezüge sind unvollständige Fixes oder neue Stellen bekannter Muster.
 
-> **Stand 02.09.2026: 109 der 112 Befunde sind abgearbeitet** — elf Themen-Branches mit je einem
-> Pull Request (#56 bis #66), ein Commit je Befundgruppe, jeder Fix mit Regressionstest und
-> Mutationsprobe (Fix entfernt ⇒ Test rot). Die Testsuite ist dabei von 5304 auf 5702 Tests
-> gewachsen, das Bundle von 288,4 auf 291,7 KB gz (Grenze 300).
+> **Stand 04.09.2026: 110 der 112 Befunde sind abgeschlossen** — 109 behoben, einer (R-27) als
+> Eigentümerentscheidung entschieden. Elf Themen-Branches mit je einem Pull Request (#56 bis #66),
+> ein Commit je Befundgruppe, jeder Fix mit Regressionstest und Mutationsprobe (Fix entfernt ⇒
+> Test rot). Die Testsuite ist dabei von 5304 auf 5832 Tests gewachsen, das Bundle von 288,4 auf
+> 292,33 KB gz (Grenze 300).
 >
-> **Drei Befunde bleiben bewusst offen**, jeder mit Begründung am Eintrag:
-> - **R-27** — JMAP bietet keinen Idempotenzschlüssel für Creates, und der im Bericht
->   vorgeschlagene Ausweg bricht das Offline-Autosave. Nur die falsche Zusage im Modulkopf ist
->   korrigiert; die Entscheidung liegt als [ADR-038](../adr/038-creates-are-not-idempotent-and-jmap-offers-no-key.md) vor.
+> **R-27 ist entschieden, nicht behoben** (04.09.2026): *lieber ein seltenes Duplikat als ein
+> häufiger Falschfehler.* JMAP bietet keinen Idempotenzschlüssel für Creates, und jeder heute
+> verfügbare Ausweg erkauft weniger Duplikate mit mehr Falschfehlern über gelungene Aktionen —
+> der im Bericht vorgeschlagene bricht zusätzlich das Offline-Autosave. Korrigiert ist die falsche
+> Zusage im Modulkopf; das Laufzeitverhalten bleibt und ist ab jetzt das spezifizierte Verhalten
+> dieses Clients. Die Aufzeichnung ist
+> [ADR-038](../adr/038-creates-are-not-idempotent-and-jmap-offers-no-key.md) (`accepted`); die dort
+> ausformulierte Sonde vor dem Wiederholungsversuch ist ein späterer Ausbau, kein offener Punkt.
+>
+> **Zwei Befunde bleiben offen**, jeder mit Begründung am Eintrag:
 > - **R-78** — die Behebung ändert, was über eine Sitzung hinweg persistiert wird. Das ist eine
 >   Produktentscheidung; als Backlog-Eintrag im Implementierungsplan aufgenommen.
 > - **R-104** — der vorgeschlagene Fix macht den Test nicht grün. Gegen die laufende Fixture
@@ -64,10 +71,16 @@ die übrigen W-Bezüge sind unvollständige Fixes oder neue Stellen bekannter Mu
 > Begründung steht jeweils am Befund und im Commit. Am deutlichsten bei **R-37**, wo der
 > vorgeschlagene Weg den Defekt in beiden Browser-Engines verschlimmert hätte, und bei **R-61**,
 > wo die geforderte Messung die Virtualisierung überflüssig machte (920 ms → 0,9 ms allein durch
-> den Render-Fix).
+> den Render-Fix). Bei **N-04** hat dieselbe Regel umgekehrt entschieden: dort trug die Messung
+> den geforderten Fix (15,4 s → 450 ms für 500 Karten).
 >
-> Was bei der Abarbeitung neu aufgefallen ist, steht unten als **N-01 bis N-10**; acht weitere
-> Nebenbefunde sind im selben Durchgang behoben worden.
+> Was bei der Abarbeitung neu aufgefallen war, steht unten als **N-01 bis N-10** — **inzwischen
+> alle zehn erledigt**, in zwei aufeinander gestapelten Branches (Compose: N-01 bis N-03, PR #69;
+> PIM/UI: N-04 bis N-08 und N-10). N-09 war schon nebenbei behoben, acht weitere Nebenbefunde
+> bereits im ersten Durchgang. Beim Abarbeiten der Nebenbefunde sind vier weitere aufgefallen und
+> mitbehoben worden (eine stehen gebliebene Outbox-Zeile nach bestätigtem Send, der
+> Klartext-Editor, der einer externen Body-Änderung nicht folgte, ein nicht erschöpfender
+> `DraftSyncStatus`-Guard und eine fünfte `__proto__`-Stelle im Kalender).
 
 ## Zusammenfassung
 
@@ -1267,15 +1280,23 @@ the requested database object could not be found…`. Gegenprüfung: bestätigt.
 
 ### R-27 — [MEDIUM] Nicht-idempotente Creates werden nach verlorener Antwort oder Absturz erneut gesendet — Duplikate bei Drafts und Adressbüchern, falsche Fehlermeldungen bei Kontakten und Ordnern
 
-**Status:** [ ] offen
-NICHT behoben, bewusst. Umgesetzt ist nur die Sofortmaßnahme (S) aus dem Lösungsansatz: Modulkopf,
+**Status:** [x] entschieden (04.09.2026) — das Verhalten bleibt, bewusst
+**Eigentümerentscheidung: lieber ein seltenes Duplikat als ein häufiger Falschfehler.** Damit ist
+Punkt 3 der Entscheidung in [ADR-038](../adr/038-creates-are-not-idempotent-and-jmap-offers-no-key.md)
+gewählt; das ADR steht auf `accepted`. Das ist keine Wahl zwischen einem Fehler und einer Behebung,
+sondern zwischen zwei Fehlern: jedes heute verfügbare Mittel erkauft weniger Duplikate mit mehr
+Falschfehlern, und ein Falschfehler trifft laut, oft und ausgerechnet jemanden, dessen Aktion
+GELUNGEN ist. Ein Duplikat ist dagegen sichtbar und löschbar.
+Umgesetzt (01.09.2026) ist die Sofortmaßnahme (S) aus dem Lösungsansatz: Modulkopf,
 `recoverStranded` und der transiente Retry-Zweig sagen jetzt, dass die Create-Familie NICHT idempotent
-ist, statt das Gegenteil zu behaupten. Das Laufzeitverhalten ist unverändert. Der eigentliche Fix — vor
-dem ERNEUTEN Versand serverseitig prüfen, ob das Objekt schon existiert — ist eine
-Architekturentscheidung (welche Sonden die Outbox stellen darf, `messageId` in `toEmailCreate`) und
-steht mit allen Optionen und Kosten in `docs/adr/038-creates-are-not-idempotent-and-jmap-offers-no-key.md`.
-Ein Teil-Fix, der Duplikate nur seltener macht (etwa Dead-Letter nach geworfenem Fehler), wäre ein
-Rückschritt: er bricht das Offline-Autosave, wie die Gegenprüfung festgestellt hat.
+ist, statt das Gegenteil zu behaupten. Das Laufzeitverhalten ist unverändert und ist ab jetzt das
+SPEZIFIZIERTE Verhalten dieses Clients, nicht eine Lücke.
+Die im ADR ausformulierte Sonde vor dem WIEDERHOLTEN Versand (`messageId` in `toEmailCreate`,
+`ContactCard/query {uid}`, `AddressBook/get`, `Mailbox/get`) wird vorerst NICHT gebaut. Sie steht
+dort als späterer Ausbau mit allen Kosten — Kandidat für ein künftiges Arbeitspaket, kein offener
+Punkt dieses Reviews. Ein Teil-Fix, der Duplikate nur seltener macht (etwa Dead-Letter nach
+geworfenem Fehler), bleibt ausgeschlossen: er bricht das Offline-Autosave, wie die Gegenprüfung
+festgestellt hat.
 
 **Kategorie / Bereich:** correctness / Sync
 
@@ -4595,6 +4616,13 @@ sind. Nummerierung `N-…`, damit sie mit den `R-…` aus diesem Review nicht ko
 
 Die Fundstellen sind gegen den Stand nach allen zehn Blöcken (`802e092`) geprüft.
 
+**Stand 04.09.2026: alle zehn sind erledigt**, in zwei aufeinander gestapelten Branches — N-01 bis
+N-03 im Compose-Block (PR #69), N-04 bis N-08 und N-10 im PIM/UI-Block; N-09 war schon nebenbei
+behoben. Jeder Eintrag sagt unter seinem Status, was tatsächlich gemacht wurde und wo davon
+abgewichen wurde: N-03, N-07 und N-10(a) sind bewusst anders gelöst als vorgeschlagen, N-06 in der
+kleinen Variante (R-104 bleibt offen), und bei N-04 und N-10(a) stand eine Messung vor der
+Entscheidung — bei N-04 trug sie den Fix, bei N-10(a) nicht.
+
 ### N-01 — [MEDIUM] Ein abgelehntes Löschen des Vorgänger-Entwurfs beim Senden ist unsichtbar
 
 **Status:** [x] erledigt
@@ -4620,8 +4648,9 @@ eine Methode weiter.
 **Auswirkung:** Der Brief geht raus, der alte Entwurf bleibt im Entwürfe-Ordner stehen, und niemand
 erfährt davon. Auf einem Server, der den `destroy` regelmäßig ablehnt (fehlende Rechte auf einem
 delegierten Konto, ein Entwurf, den ein anderer Client inzwischen verschoben hat), sammelt sich pro
-gesendeter Mail eine Leiche an. Zusammen mit R-27 (offen) ist das der zweite Weg, auf dem der
-Entwürfe-Ordner voll bleibt.
+gesendeter Mail eine Leiche an. Zusammen mit R-27 (entschieden: Duplikate durch
+Re-Send bleiben, [ADR-038](../adr/038-creates-are-not-idempotent-and-jmap-offers-no-key.md)) ist
+das der zweite Weg, auf dem der Entwürfe-Ordner voll bleibt.
 
 **Lösungsansatz:** `PortSetResult` um ein `emailNotDestroyed` neben `emailCreated` erweitern und im
 Outbox-Pfad eigens behandeln — und zwar NICHT als Rejection: der Brief ist raus, ein Dead Letter

@@ -25,12 +25,12 @@ tested. That is what makes the shape dangerous rather than merely untidy: a corr
 them reaches neither of the others, and nothing anywhere goes red.
 
 And this rule in particular is built to rot. The browsers disagree about what they even send.
-Firefox (≥ 65) reports the COMMITTED key with `isComposing: true` — `key: 'Escape'`, `key: 'Enter'`
-— so only the flag distinguishes it from a real press. Chromium reports `key: 'Process'` with the
-legacy `keyCode 229`; Safari sends the `keyCode` too. A copy written and verified against one
-engine passes its tests and drops half the rule in the other. The cost of getting it wrong is not
-cosmetic: a Japanese or Chinese writer presses Enter to commit a candidate, some surface takes the
-press for itself, and what they were typing is gone — or a `confirmDiscard` dialog asks them
+Firefox (≥ 65) reports the COMMITTED key with `isComposing: true` — the committed `Escape` or
+`Enter` — so only the flag distinguishes it from a real press. Chromium reports `key: 'Process'`
+with the legacy `keyCode 229`; Safari sends the `keyCode` too. A copy written and verified against
+one engine passes its tests and drops half the rule in the other. The cost of getting it wrong is
+not cosmetic: a Japanese or Chinese writer presses Enter to commit a candidate, some surface takes
+the press for itself, and what they were typing is gone — or a `confirmDiscard` dialog asks them
 whether to throw it away.
 
 The finding framed the merge as a choice between "make `shortcuts` depend on `ui`, a NEW dependency
@@ -77,8 +77,8 @@ The reasoning, in the order it decided the question:
   and a test that fails the moment a second place appears.
 - `shortcuts` is confirmed as a consumer of `ui` rather than a peer of it. That was already true in
   six files; it is now stated somewhere, instead of being a fact one has to grep for.
-- `ui/` keeps its one distinguishing property — it imports from no other area — and that property
-  is now load-bearing rather than incidental: it is the reason this ADR could answer the question
+- `ui/` keeps its one distinguishing property — it imports from no other area — and that is now
+  load-bearing rather than incidental: it is the reason this ADR could answer the question
   without inventing a directory.
 - If a future browser fact needs a home and genuinely does NOT belong to the design system (a
   `navigator` probe, a storage quirk), this ADR is what it argues with. The bar it sets is: show

@@ -1,7 +1,8 @@
 # 038 — Creates are not idempotent, JMAP offers no key, and the outbox re-sends them anyway
 
-- **Status:** proposed
-- **Date:** 2026-09-01
+- **Status:** accepted
+- **Date:** 2026-09-04 (drafted 2026-09-01, decided by the owner 2026-09-04)
+- **Deciders:** the project owner, on the review's closing pass
 - **Work package:** code review 2026-09-01, finding R-27
 - **Relates to:** `apps/web/src/sync/engine/outbox.ts` (`recoverStranded`, the transient-retry
   branch), `apps/web/src/sync/engine/conflict.ts`, `apps/web/src/compose/use-draft-sync.ts`,
@@ -54,19 +55,27 @@ rare duplicate into a frequent false failure is worse than the defect.**
 
 ## Decision
 
-**Split the finding, and ship only the honest half now.**
+**A rare duplicate is better than a frequent false failure. The behaviour stays as it is, and the
+probe below is a later expansion, not an open question.**
 
-1. **The comments are corrected** (this is what landed with this ADR). The module header no longer
-   claims idempotence for the create family, `recoverStranded` says which of its rows are safe to
-   re-send and which are not, and the transient branch names the same gap. Nothing in the runtime
-   behaviour changed. A comment that describes a hole as closed is how a hole survives a review,
-   and both of these did exactly that.
+That is the owner's decision, taken on 2026-09-04, and it is what closes finding R-27. It is a
+choice between two defects, not between a defect and a fix: every mechanism available today buys
+fewer duplicates by producing more false failures, and a false failure is louder, more frequent,
+and lands on a user whose action actually SUCCEEDED. In the three numbered parts:
 
-2. **The real fix is deferred and specified here**, because it is a design decision about what the
-   outbox is allowed to ask the server, not a patch. The shape is: before **re-sending** a create
-   (`attempts > 0`, i.e. never on the first attempt, so the common path pays nothing), probe the
-   server for the object the first attempt would have made; on a hit, treat the row as `satisfied`
-   and reconcile the server id into the replica instead of creating a second object.
+1. **The comments are corrected** (this landed with the ADR itself, on 2026-09-01). The module
+   header no longer claims idempotence for the create family, `recoverStranded` says which of its
+   rows are safe to re-send and which are not, and the transient branch names the same gap. Nothing
+   in the runtime behaviour changed. A comment that describes a hole as closed is how a hole
+   survives a review, and both of these did exactly that.
+
+2. **The probe is specified here as a LATER EXPANSION, and is deliberately not built now.** It is
+   a design decision about what the outbox is allowed to ask the server, and the window it closes
+   is a sub-second one that needs a connection to die inside it. The shape, when it is built:
+   before **re-sending** a create (`attempts > 0`, i.e. never on the first attempt, so the common
+   path pays nothing), probe the server for the object the first attempt would have made; on a
+   hit, treat the row as `satisfied` and reconcile the server id into the replica instead of
+   creating a second object.
 
    Per type, the probe that is available today:
 
@@ -84,14 +93,22 @@ rare duplicate into a frequent false failure is worse than the defect.**
    Cost: one extra round trip per re-sent create, on a path that is already retrying, and a
    `messageId` on every draft we create.
 
-3. **Until then the behaviour stays as it is**: a create that meets a lost answer is re-sent. That
-   is a deliberate choice of the rare duplicate over the frequent false failure, not an oversight.
+3. **The behaviour stays as it is**: a create that meets a lost answer is re-sent. This is the
+   part the owner decided, and it is the status quo on purpose — not a gap waiting to be filled.
+   Anyone reading the retry paths should treat "a re-sent create may duplicate" as the specified
+   behaviour of this client, documented at each site, and not as a bug report.
 
 ## Consequences
 
-- **Finding R-27 stays open** in the 2026-09-01 review, with this ADR as its record. Closing it
-  requires the probe above, which is estimated L and touches the compose path (`toEmailCreate`),
-  the port and four intents.
+- **Finding R-27 is closed** in the 2026-09-01 review — decided, not fixed, with this ADR as its
+  record. What remains is the expansion in part 2, estimated L, touching the compose path
+  (`toEmailCreate`), the port and four intents; it is a candidate for a future work package, not
+  an outstanding item of the review.
+- The client can produce a duplicate draft or a duplicate address book after a connection dies in
+  the sub-second gap between the server processing a create and the answer arriving. That is
+  accepted, and it is user-visible: a second draft in the Drafts folder, which the reader can
+  delete. The alternative that was rejected is not visible at all until it fires, and then it
+  fires on successful actions, offering "Try again" for work already done.
 - The `messageId` half is the piece with independent value: a draft that carries its own
   `Message-ID` is also what any future "is this draft already on the server" question needs, and it
   costs one field.
