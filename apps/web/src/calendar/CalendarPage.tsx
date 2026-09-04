@@ -269,13 +269,27 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
    * screens that never did.
    */
   const online = useOnline()
-  const [calendars, setCalendars] = useState<Calendar[]>([])
-  /**
-   * Whether {@link calendars} is an ANSWER or just the initial empty value.
+  /*
+   * The network's calendar answer, TAGGED with the account it answers about.
    *
-   * Without it the first paint cannot tell "this account has no calendars" from "the list has not
-   * arrived", and the range query would either fetch nothing for ever or fetch everything once and
-   * then contradict itself.
+   * Without the tag the fetched list is a boolean "loaded" and would survive an account switch
+   * (S-4b): for the moment between the route change and the refetch, the rail would draw the OLD
+   * account's calendars while the screen already acts in the new one — and a tick in that window
+   * would write `isVisible` for an old-account id against the NEW account (the ADR-018 collision).
+   * A tagged answer only counts for the account it came from; a mid-flight answer that lands after
+   * a switch is simply ignored by the acting account and stays valid for the one it names.
+   */
+  const [calendars, setCalendars] = useState<{
+    readonly accountId: Id | null
+    readonly list: Calendar[]
+  }>({
+    accountId: null,
+    list: [],
+  })
+  /*
+   * `calendarsLoaded` sits BESIDE the tag on purpose: the tag alone cannot tell "never arrived"
+   * from "arrived, and it is empty" (the initial tag equals the session-less account id), and the
+   * flag alone cannot tell the previous account's answer from the acting one's.
    */
   const [calendarsLoaded, setCalendarsLoaded] = useState(false)
   /** `{ placed }` edits, `{ placed: null }` creates on `day`. */
@@ -449,12 +463,18 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
   const replicaCalendars = useCalendars()
 
   /**
-   * What the rail draws and what the month filter names — the network's answer once it has one, the
-   * replica's until then. `null` while neither has answered.
+   * What the rail draws and what the month filter names — the network's answer once it has one FOR
+   * THE ACTING ACCOUNT, the replica's until then (and forever, for an account the network never
+   * answered). `null` while neither has answered: `accountId: null` means "not loaded for anyone",
+   * a foreign tag means "loaded for another account", and only a matching tag is an ANSWER — so an
+   * empty list still means "this account has no calendars" and never "not known yet".
    */
   const effectiveCalendars = useMemo<Calendar[] | null>(
-    () => (calendarsLoaded ? calendars : (replicaCalendars ?? null)),
-    [calendars, calendarsLoaded, replicaCalendars],
+    () =>
+      calendarsLoaded && calendars.accountId === accountId
+        ? calendars.list
+        : (replicaCalendars ?? null),
+    [calendars, calendarsLoaded, accountId, replicaCalendars],
   )
 
   /**
@@ -538,20 +558,28 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
   const loadCalendars = useCallback(async () => {
     if (client === null) return
     try {
-      setCalendars(await client.listCalendars())
+      // Tagged with the account the answer came from (null = no session, the test/single case); a
+      // switch mid-flight makes this answer land for the OLD account, where it is kept and ignored
+      // by the new acting account. `null === null` still matches, so the tag costs the session-less
+      // path nothing.
+      const list = await client.listCalendars()
+      setCalendars({ accountId, list })
       setCalendarsLoaded(true)
       setFailed(false)
     } catch {
       setFailed(true)
     }
-  }, [client])
+  }, [client, accountId])
 
   useEffect(() => {
     void loadCalendars()
   }, [loadCalendars])
 
   /** The share dialog's subject, read from the LIVE list — see {@link sharingId}. */
-  const sharing = sharingId === null ? null : (calendars.find((c) => c.id === sharingId) ?? null)
+  const sharing =
+    sharingId === null || calendars.accountId !== accountId
+      ? null
+      : (calendars.list.find((calendar) => calendar.id === sharingId) ?? null)
 
   useEffect(() => {
     if (client === null) return
@@ -768,9 +796,14 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
    */
   const toggleCalendar = async (calendar: Calendar, visible: boolean): Promise<void> => {
     if (client === null) return
-    setCalendars((current) =>
-      current.map((entry) => (entry.id === calendar.id ? { ...entry, isVisible: visible } : entry)),
-    )
+    // The optimistic patch lives under the tag that made the row drawable in the first place — the
+    // acting account's own answer (S-4b).
+    setCalendars((current) => ({
+      ...current,
+      list: current.list.map((entry) =>
+        entry.id === calendar.id ? { ...entry, isVisible: visible } : entry,
+      ),
+    }))
     try {
       await client.updateCalendar(calendar.id, { isVisible: visible })
     } catch (error) {

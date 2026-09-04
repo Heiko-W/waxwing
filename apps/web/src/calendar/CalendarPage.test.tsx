@@ -1314,8 +1314,13 @@ describe('acting in a delegated calendar account (S-4b)', () => {
     areas: { mail: 'granted', contacts: 'granted', files: 'granted', calendar: 'granted' },
   } as const
 
-  function renderInAccount(path: string) {
+  function renderInAccount(
+    path: string,
+    injected?: CalendarClient,
+    seed?: (database: ReplicaDb) => Promise<void>,
+  ) {
     db = freshDb()
+    if (seed !== undefined) void seed(db)
     const value = {
       connected: {
         client: { call: async () => ({}) },
@@ -1331,7 +1336,7 @@ describe('acting in a delegated calendar account (S-4b)', () => {
         <SessionContext.Provider value={value}>
           <ToastProvider>
             <ReplicaProvider accountId={ACC} db={db}>
-              <CalendarPage client={client()} today={TODAY} />
+              <CalendarPage client={injected ?? client()} today={TODAY} />
             </ReplicaProvider>
           </ToastProvider>
         </SessionContext.Provider>
@@ -1426,6 +1431,45 @@ describe('acting in a delegated calendar account (S-4b)', () => {
       timeout: 5_000,
     })
     await waitFor(() => expect(watchGroup).toHaveBeenCalled(), { timeout: 5_000 })
+  })
+
+  it('never draws the PREVIOUS account’s calendar list after a switch (S-4b, ADR-018)', async () => {
+    // The review finding this pins: `calendars` used to be a plain boolean-"loaded" list, so the
+    // moment after the route switch the rail still drew the OLD account's calendars while acting in
+    // the new one — and a tick then would write `isVisible` for an old id against the new account.
+    // Now the answer is tagged with its account and a foreign tag falls back to the replica.
+    let calls = 0
+    const slow = client({
+      listCalendars: async () => {
+        calls += 1
+        if (calls === 1) return [{ ...CALENDAR, name: 'Own Cal' }]
+        // The new account's network answer never lands — the stale list would persist for ever
+        // without the tag, which is what makes this test deterministic rather than a race.
+        return await new Promise<Calendar[]>(() => {})
+      },
+    })
+    const user = userEvent.setup()
+    setEngineFor(ACC, {
+      accountId: ACC,
+      watchCalendarQuery: vi.fn(() => 'ka'),
+      unwatchCalendarQuery: vi.fn(),
+    } as unknown as SyncEngine)
+    setEngineFor('b', {
+      accountId: 'b',
+      watchCalendarQuery: vi.fn(() => 'kb'),
+      unwatchCalendarQuery: vi.fn(),
+    } as unknown as SyncEngine)
+    renderInAccount('/calendar', slow, (database) =>
+      putCalendars(database, 'b', [{ ...CALENDAR, id: 'gb', name: 'Group Rep Cal' }]),
+    )
+    // Own list lands…
+    await screen.findByRole('checkbox', { name: 'Own Cal' }, { timeout: 5_000 })
+    // …switch to the group account whose network answer never arrives.
+    await user.click(screen.getByRole('link', { name: 'group@waxwing.test' }))
+    // The OWN list must be gone (it is tagged for the own account) and the replica's answer for
+    // the new account drawn instead.
+    await screen.findByRole('checkbox', { name: 'Group Rep Cal' }, { timeout: 5_000 })
+    expect(screen.queryByRole('checkbox', { name: 'Own Cal' })).not.toBeInTheDocument()
   })
 
   it('vets ?account= — an unknown account falls back to the own one (B37)', async () => {

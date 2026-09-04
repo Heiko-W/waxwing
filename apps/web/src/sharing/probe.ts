@@ -72,8 +72,11 @@ export const SHARE_AREAS: readonly ShareArea[] = ['mail', 'contacts', 'files', '
 /**
  * The method whose refusal is the answer, per area.
  *
- * All four are a `/get` with an empty id list, because all three (and `Calendar/get`, measured with
- * S-4b) were observed to refuse that exactly as they refuse a real fetch — see the module header.
+ * All four are a `/get` with an empty id list, because all four were measured to refuse that exactly
+ * as they refuse a real fetch — see the module header. `Calendar/get` joined in S-4b and was measured
+ * the same way against the v0.16.18 fixture (2026-09-04): an account that shares only MAIL answers
+ * `Calendar/get {ids:[]}` with `forbidden`, like the other three — the calendar probe does not lie in
+ * the denied direction either.
  */
 const AREA_METHOD: Readonly<Record<ShareArea, string>> = {
   mail: Methods.mailboxGet.name,
