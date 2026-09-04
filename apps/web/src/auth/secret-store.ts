@@ -45,6 +45,21 @@ export const SecretName = {
   PkceTransaction: 'oauth.pkce',
   /** Small record describing the persisted session so it can be restored on cold boot. */
   AuthRecord: 'auth.record',
+  /**
+   * The last JMAP Session document (RFC 8620 §2) — the ONE entry here that is not a secret.
+   *
+   * It is here because its VALIDITY is the validity of the credentials beside it, and nothing
+   * else in this app has that lifetime. A cold start with no network rebuilds its JMAP client
+   * from this document (FR-OFF-01), and it may only ever do so for the identity {@link AuthRecord}
+   * describes — so the two are written together, deleted together, and destroyed together by the
+   * one `deleteDatabase` in {@link SecretStore.wipe}. Keeping it in the replica instead would put
+   * that invariant back in the hands of five call sites; see docs/adr/041.
+   *
+   * It carries no token and no mail: a username, the accounts with their names, the four URLs,
+   * the capability list and the opaque `state`. It is encrypted here because everything in this
+   * store is, not because it needs to be.
+   */
+  JmapSession: 'jmap.session',
 } as const
 
 export type SecretName = (typeof SecretName)[keyof typeof SecretName]
