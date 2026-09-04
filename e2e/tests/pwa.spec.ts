@@ -91,39 +91,30 @@ test.beforeEach(async () => {
 })
 
 test.describe('M3.10 pwa', () => {
-  test('offline, a reopen boots the precached shell — and gets no further than sign-in', async ({
+  test('offline, a reopen boots the precached shell AND the cached mail behind it (FR-OFF-01)', async ({
     page,
     context,
   }) => {
-    // ── WHAT THIS TEST FOUND, WHICH IS NOT WHAT IT WAS COMMISSIONED TO ASSERT ──────────────────
+    // ── WHAT THIS TEST IS, AND WHAT IT USED TO BE ─────────────────────────────────────────────
     //
     // M3.5's hand-over asked for "an offline reopen with an authenticated session, showing cached
-    // MAIL behind the offline marker". That is NOT what the app does today, and the gap is a
-    // product defect rather than a harness limitation. Measured here before this test was written:
+    // MAIL behind the offline marker". Until 2026-09-04 the app could not do the second half, and
+    // this test was a TRIPWIRE that pinned the gap with `toBeHidden()` on the mail: the precached
+    // shell booted, `restore()` succeeded, and then `SessionProvider.boot()` fed the restored
+    // session into `connectSession()` — which fetches the JMAP Session document from the network.
+    // Offline that threw, and the reader got the sign-in form reading "Could not reach the server"
+    // with a fully populated replica sitting behind it, unreachable.
     //
-    //   * The precached shell boots offline. That half works, and is what this test asserts.
-    //   * `AuthController.restore()` also works offline exactly as its doc-comment claims
-    //     ("Restores a session on cold boot without a fresh login (offline start, FR-AUTH-03)"): it
-    //     only reads the AES-GCM secret store in IndexedDB, and with "Stay signed in" ticked the
-    //     record is there.
-    //   * But `SessionProvider.boot()` step B does not stop there — it feeds the restored session
-    //     straight into `connectSession()`, which calls `services.connect()` and FETCHES the JMAP
-    //     session object from the network. `jmapSession` is held in memory only; it is persisted
-    //     nowhere. Offline that fetch throws, `boot()`'s outer catch turns it into `goToLogin(…,
-    //     errToOnboard(error))`, and the user lands on the sign-in screen reading "Could not reach
-    //     the server" — with a fully populated local replica sitting behind it, unreachable.
+    // R-78 / ADR-041 closed it, and the tripwire did its job: the fix made this file go red, and
+    // this is the rewrite it demanded. The Session document is now kept beside the credentials in
+    // the encrypted `waxwing-auth` store — NOT in the service-worker cache, whose invariant is
+    // still zero bytes from JMAP (the test below this one is what proves that), and not in the
+    // replica, which outlives a plain sign-out. A cold start with no network rebuilds its client
+    // from it.
     //
-    // So FR-OFF-01's promise stops one step short: the shell opens offline and then shows a form
-    // that cannot be submitted offline. Note the fix cannot be "cache the session document": the
-    // session object lives at a JMAP path, and sw-routes.ts's central invariant is that the worker
-    // caches ZERO bytes from JMAP. It would have to be persisted into the encrypted replica beside
-    // everything else, which is a product change, not a test change.
-    //
-    // THIS TEST IS THEREFORE A TRIPWIRE AS WELL AS A REGRESSION GATE. The `toBeHidden()` assertion
-    // at the bottom pins the CURRENT limit deliberately. When the session gap is closed it will go
-    // RED, and whoever closes it must come here and rewrite this test to assert the cached mail the
-    // hand-over originally asked for. A silent pass would let the fix ship with the coverage still
-    // claiming the old behaviour.
+    // The four assertions below are the four halves of FR-OFF-01's sentence, in order: the shell
+    // loads from the precache, the session comes back, the cached mail is there, and it is clearly
+    // marked "offline".
     await login(page, { stay: true })
     await reloadIntoServiceWorkerControl(page)
 
@@ -138,9 +129,11 @@ test.describe('M3.10 pwa', () => {
     const broken = brokenAppRequests(page)
     await page.reload()
 
-    // The shell booted: the document, the entry chunk and every eager chunk came out of the
-    // precache with no network at all. This is the assertion the precache exists for.
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Webmail for', {
+    // 1. The shell booted: the document, the entry chunk and every eager chunk came out of the
+    //    precache with no network at all. This is the assertion the precache exists for, and it is
+    //    made on the REQUESTS rather than on any one element, so it still means "nothing of ours
+    //    went to the network" now that the destination is the app rather than the sign-in form.
+    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({
       timeout: SYNC_BUDGET_MS,
     })
     expect(broken).toEqual([])
@@ -149,7 +142,67 @@ test.describe('M3.10 pwa', () => {
     // offline, and would be asserting nothing whatsoever about the precache.
     expect(await page.evaluate(() => navigator.onLine)).toBe(false)
 
-    // The tripwire — see the block comment above. Today the cached mail is NOT reachable offline.
+    // 2 + 3. The session came back without a server, and the mail behind it is reachable — the
+    //        half M3.5 asked for and could not have. The sign-in form is the failure this replaces,
+    //        so its absence is asserted too rather than merely implied by the mail being there.
+    await expect(page.getByRole('button', { name: 'Sign in with a password' })).toBeHidden()
+    await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
+
+    // 4. "clearly marked offline", in the app's own existing words — the same chip a live session
+    //    raises when the connection drops (`offline.spec.ts`). No second vocabulary was invented
+    //    for this state, and this is what says so.
+    await expect(page.getByRole('status').filter({ hasText: 'Offline' })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
+
+    // And the message opens: a list of subjects would be a thinner promise than FR-OFF-01 makes.
+    // The body comes out of the replica, through the same reading pane an online session uses.
+    await messageList(page).getByText(READ_SUBJECTS.plain).click()
+    await expect(page.getByRole('heading', { name: READ_SUBJECTS.plain })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
+  })
+
+  test('offline, a reopen without "stay signed in" still lands on the sign-in form', async ({
+    page,
+    context,
+  }) => {
+    // The other half of the decision, and it is deliberate (FR-AUTH-04): with the box unticked
+    // NOTHING about the session is persisted, so there is no `restore()` — and therefore, by the
+    // controller's own guard, no stored Session document either. The reader sees the sign-in form,
+    // which is the honest answer: this device was not asked to remember anything.
+    //
+    // Here rather than in a unit test because the guard spans two modules and one storage boundary,
+    // and because a regression would be silent: the failure mode is a session document quietly
+    // outliving a session the user asked not to keep.
+    // The worker is put in control BEFORE the sign-in here, not after it. Reloading afterwards
+    // would end this session by itself — which is exactly what "stay signed in" unticked means —
+    // and the test would then be measuring its own setup rather than the offline boot.
+    await page.goto('/')
+    await reloadIntoServiceWorkerControl(page)
+    await login(page)
+    await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
+
+    await context.setOffline(true)
+    await page.reload()
+
+    // No session: no folder tree, no mail, and onboarding on screen instead.
+    //
+    // WHICH onboarding step is deliberately not pinned. With no persisted session the boot falls
+    // through to the same-origin probe, and offline that probe cannot answer — so this lands on
+    // the manual "connect to a server" step ("Welcome to Waxwing") rather than the sign-in step
+    // ("Webmail for …"). That is pre-existing behaviour, unchanged by FR-OFF-01, and pinning it
+    // here would make this test fail for a reason it is not about.
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+      /Welcome to Waxwing|Webmail for/,
+      { timeout: SYNC_BUDGET_MS },
+    )
+    expect(await page.evaluate(() => navigator.onLine)).toBe(false)
+    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeHidden()
     await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeHidden()
   })
 
