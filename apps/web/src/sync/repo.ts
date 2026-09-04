@@ -309,8 +309,8 @@ export function emailsByIds(
  * Every email row in a mailbox, via the account-scoped membership index.
  *
  * A TEST reader (B24): the app never loads a folder this way — a folder view is the server's ordered
- * `Email/query` window (`queryCache`) hydrated by `emailsByIds`, and "select all in folder" takes
- * the ids-only `emailIdsInMailbox` below. What this is good for is asserting membership after a
+ * `Email/query` window (`queryCache`) hydrated by `emailsByIds`, and "select all in folder" pages
+ * the query itself (`SyncEngine.collectQueryIds`), not the replica. What this is good for is asserting membership after a
  * move or a rollback, which three suites do. Kept and labelled rather than deleted: the alternative
  * is the same `where('amb')` query copy-pasted into each of them, one `scopeKey` call away from
  * silently asserting nothing.
@@ -319,7 +319,16 @@ export function emailsInMailbox(db: ReplicaDb, accountId: Id, mailboxId: Id): Pr
   return db.emails.where('amb').equals(scopeKey(accountId, mailboxId)).toArray()
 }
 
-/** The full id-set of a folder for "select all in folder" (FR-LST-04) — ids only, no row load. */
+/**
+ * Every id of a folder the REPLICA holds — ids only, no row load. A maintenance reader (the eviction
+ * pass's protected set, and the pinned-folder sweep).
+ *
+ * NOT "select all in folder" (FR-LST-04), which this comment claimed until R-08 stage 2 shipped and
+ * which nothing here ever implemented: the replica holds what has been synced, in no query order,
+ * without the folder query's own conditions (a snoozed message is excluded from the window and
+ * present here), so the two sets are not the same set. That feature pages `Email/query` through
+ * {@link SyncEngine.collectQueryIds}.
+ */
 export async function emailIdsInMailbox(
   db: ReplicaDb,
   accountId: Id,
