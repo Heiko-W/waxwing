@@ -2662,7 +2662,12 @@ explicit owner decision:
   pressable for the retry. Undo carries the full set (one inverse `move`, auto-chunked). Measured on
   a phone (390 × 844) and a tablet (834 × 1112) with `noOverflow` plus a row count, which is what put
   the step on a row of its own: the bulk bar does not wrap and sizes its overflow menu by what the
-  actions have left, and "50 of 60 selected" beside "Select all 60" is most of a 390px line.
+  actions have left, and a counter beside a text button is most of a 390px line. **A follow-up
+  shipped with it (ADR-044):** this is the first surface that regularly writes four- and five-digit
+  numbers at a reader, so the counter, the two select-all sentences, the delete confirmation and the
+  search result count now interpolate `{{count, number}}` — through `formatNumber`, because the
+  obvious `t(key, {count: formatNumber(n)})` would have handed i18next a string to choose a plural
+  form from and served one Russian form for 1, 2 and 5.
 - ~~The offline cold start, the rest of FR-OFF-01 (filed 2026-09-02 with R-78)~~ — **shipped
   2026-09-04**, and the E2E tripwire that pinned it is now the offline cold-start test M3.5 asked
   for. An installed PWA opened offline booted its shell out of the precache and then landed on the
