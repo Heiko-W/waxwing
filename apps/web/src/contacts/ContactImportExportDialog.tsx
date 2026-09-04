@@ -146,6 +146,23 @@ export default function ContactImportExportDialog({
    * stay created. Cancel means "stop", not "undo".
    */
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  /*
+   * An import that STOPPED, and how far it had got.
+   *
+   * `onConfirmImport` was a `try/finally` with no `catch` — the same shape `onExport` had before
+   * R-55 and for the same cost: a throw from the dispatch (the replica transaction failing, the
+   * engine gone) left an unhandled rejection in the console, `importedCount` unset, and NOTHING on
+   * screen. The reader watched a progress bar disappear and was told neither that it had stopped
+   * nor how many of their contacts had arrived.
+   *
+   * The cards already written STAY written — this is not rolled back. A block is one replica
+   * commit (N-04), so the count below is exact rather than approximate, and rolling back work the
+   * server may already have accepted would be a second, larger failure dressed as tidiness. The
+   * file is spent (`parseState` goes back to idle), and picking it again is a real way forward:
+   * every card written carries its source `uid` and emails, so `dedupeAgainst` classifies it as a
+   * duplicate and the second pass offers only the remainder.
+   */
+  const [importFailed, setImportFailed] = useState<{ done: number; total: number } | null>(null)
   const cancelledRef = useRef(false)
   const [exporting, setExporting] = useState(false)
   /*
@@ -174,6 +191,7 @@ export default function ContactImportExportDialog({
       const format = detectFormat(file.name, importFormat)
       setImportFormat(format)
       setImportedCount(null)
+      setImportFailed(null)
       setParseState({ status: 'parsing' })
       try {
         const text = await file.text()
@@ -207,6 +225,8 @@ export default function ContactImportExportDialog({
     const cards = chosen.slice(0, MAX_IMPORT_CARDS)
     setImporting(true)
     cancelledRef.current = false
+    setImportedCount(null)
+    setImportFailed(null)
     setProgress({ done: 0, total: cards.length })
     let done = 0
     try {
@@ -224,6 +244,12 @@ export default function ContactImportExportDialog({
         await new Promise((resolve) => setTimeout(resolve, 0))
       }
       setImportedCount(done)
+      setParseState({ status: 'idle' })
+    } catch {
+      // Said, not swallowed, and said with the two numbers that matter. `done` counts COMMITTED
+      // blocks only — the block that threw rolled back whole — so "X of Y" is a fact about the
+      // address book and not an estimate.
+      setImportFailed({ done, total: cards.length })
       setParseState({ status: 'idle' })
     } finally {
       setImporting(false)
@@ -406,6 +432,17 @@ export default function ContactImportExportDialog({
             {importedCount !== null && (
               <p role="status" className={styles.formHint}>
                 {t('contacts.io.result.imported', { count: importedCount })}
+              </p>
+            )}
+
+            {/* `alert`, not `status`: this contradicts what the reader asked for, and the next step
+                (choose the file again) is theirs to take. */}
+            {importFailed !== null && (
+              <p role="alert" className={styles.formNotice}>
+                {t('contacts.io.result.importFailed', {
+                  done: importFailed.done,
+                  total: importFailed.total,
+                })}
               </p>
             )}
           </section>

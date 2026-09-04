@@ -921,6 +921,7 @@
         "imported_few": "Importovány {{count}} kontakty.",
         "imported_many": "Importováno {{count}} kontaktu.",
         "imported_other": "Importováno {{count}} kontaktů.",
+        "importFailed": "Importováno {{done}} z {{total}} kontaktů, poté se import zastavil. Vyberte soubor znovu a zopakujte zbytek — kontakty, které už existují, se přeskočí jako duplicity.",
         "empty": "V souboru nebyly nalezeny žádné kontakty.",
         "capped": "Importuje se jen prvních {{max}} kontaktů."
       },

@@ -879,6 +879,7 @@
         "duplicates_other": "发现{{count}}个重复项",
         "skipped_other": "有{{count}}行无法读取",
         "imported_other": "已导入{{count}}位联系人。",
+        "importFailed": "导入中断前已导入 {{total}} 个联系人中的 {{done}} 个。再次选择该文件即可重试其余联系人——已存在的联系人会作为重复项跳过。",
         "empty": "文件中没有找到联系人。",
         "capped": "只会导入前{{max}}位联系人。"
       },

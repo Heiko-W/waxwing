@@ -907,6 +907,7 @@
         "imported_one": "{{count}} contatto importato.",
         "imported_many": "{{count}} di contatti importati.",
         "imported_other": "{{count}} contatti importati.",
+        "importFailed": "Sono stati importati {{done}} contatti su {{total}} prima che l’importazione si interrompesse. Scegli di nuovo il file per riprovare con i restanti: i contatti già presenti vengono saltati come duplicati.",
         "empty": "Nessun contatto trovato nel file.",
         "capped": "Verranno importati solo i primi {{max}} contatti."
       },

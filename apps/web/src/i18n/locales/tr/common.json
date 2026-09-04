@@ -893,6 +893,7 @@
         "skipped_other": "{{count}} satır okunamadı",
         "imported_one": "{{count}} kişi içe aktarıldı.",
         "imported_other": "{{count}} kişi içe aktarıldı.",
+        "importFailed": "İçe aktarma durmadan önce {{total}} kişiden {{done}} tanesi içe aktarıldı. Kalanları yeniden denemek için dosyayı tekrar seçin — zaten var olan kişiler yinelenen olarak atlanır.",
         "empty": "Dosyada hiç kişi bulunamadı.",
         "capped": "Yalnızca ilk {{max}} kişi içe aktarılacak."
       },

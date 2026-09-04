@@ -921,6 +921,7 @@
         "imported_few": "Zaimportowano {{count}} kontakty.",
         "imported_many": "Zaimportowano {{count}} kontaktów.",
         "imported_other": "Zaimportowano {{count}} kontaktu.",
+        "importFailed": "Zaimportowano {{done}} z {{total}} kontaktów, zanim import się zatrzymał. Wybierz plik ponownie, aby powtórzyć resztę — kontakty, które już istnieją, zostaną pominięte jako duplikaty.",
         "empty": "W pliku nie znaleziono żadnych kontaktów.",
         "capped": "Zaimportowanych zostanie tylko pierwszych {{max}} kontaktów."
       },

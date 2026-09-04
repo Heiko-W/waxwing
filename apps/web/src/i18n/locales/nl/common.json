@@ -893,6 +893,7 @@
         "skipped_other": "{{count}} regels konden niet worden gelezen",
         "imported_one": "{{count}} contact geïmporteerd.",
         "imported_other": "{{count}} contacten geïmporteerd.",
+        "importFailed": "{{done}} van {{total}} contacten zijn geïmporteerd voordat het importeren stopte. Kies het bestand opnieuw om de rest nog eens te proberen — contacten die er al zijn, worden als duplicaat overgeslagen.",
         "empty": "Geen contacten in het bestand gevonden.",
         "capped": "Alleen de eerste {{max}} contacten worden geïmporteerd."
       },
