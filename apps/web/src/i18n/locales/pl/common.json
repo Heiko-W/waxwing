@@ -39,6 +39,7 @@
   },
   "onboarding": {
     "welcome": "Witamy w {{product}}",
+    "offline": "Jesteś offline. Logowanie wymaga połączenia — gdy tylko się pojawi, poczta znów tu będzie.",
     "connect": {
       "title": "Połącz się ze swoją skrzynką pocztową",
       "label": "Adres e-mail lub serwer",

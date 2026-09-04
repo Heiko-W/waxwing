@@ -39,6 +39,7 @@
   },
   "onboarding": {
     "welcome": "Vítá vás {{product}}",
+    "offline": "Jste offline. Přihlášení vyžaduje připojení — jakmile bude, vaše pošta se vrátí.",
     "connect": {
       "title": "Připojení k poštovní schránce",
       "label": "E-mailová adresa nebo server",

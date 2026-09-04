@@ -39,6 +39,7 @@
   },
   "onboarding": {
     "welcome": "Welcome to {{product}}",
+    "offline": "You are offline. Signing in needs a connection — your mail is here again as soon as there is one.",
     "connect": {
       "title": "Connect to your mailbox",
       "label": "Email address or server",

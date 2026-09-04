@@ -39,6 +39,7 @@
   },
   "onboarding": {
     "welcome": "Bienvenue dans {{product}}",
+    "offline": "Vous êtes hors ligne. La connexion au compte nécessite un réseau — dès qu’il y en a un, vos messages sont de retour.",
     "connect": {
       "title": "Connexion à votre messagerie",
       "label": "Adresse e-mail ou serveur",

@@ -39,6 +39,7 @@
   },
   "onboarding": {
     "welcome": "Bem-vindo ao {{product}}",
+    "offline": "Está offline. Iniciar sessão exige uma ligação — assim que houver uma, o seu correio volta a estar aqui.",
     "connect": {
       "title": "Ligar à sua caixa de correio",
       "label": "Endereço de e-mail ou servidor",

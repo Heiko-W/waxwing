@@ -163,3 +163,73 @@ describe('the escape hatch against a real failure, not against a key (U2)', () =
     expect(screen.getByRole('button', { name: RESET })).toBeInTheDocument()
   })
 })
+
+/**
+ * THE WIRING, which the two form tests structurally cannot see (FR-OFF-01).
+ *
+ * `ConnectForm` and `LoginForm` are presentational and take `offline` as a prop, so their own
+ * tests pass whatever they like — including against a container that never reads the browser at
+ * all. That is the passes-for-the-wrong-reason shape this project keeps finding: a seam correct in
+ * isolation and connected to nothing. These two drive the real chain, from `navigator.onLine` to
+ * the sentence on the screen.
+ */
+describe('offline reaches the onboarding screens (FR-OFF-01)', () => {
+  const onLine = (value: boolean) =>
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value })
+
+  afterEach(() => onLine(true))
+
+  async function boot(config: WaxwingConfig, probeResult: 'present' | 'unknown') {
+    const fake = makeFakeServices({ probeResult })
+    render(
+      <ServicesProvider value={fake.services}>
+        <ConfigProvider config={config}>
+          <SessionProvider config={config}>
+            <Onboarding />
+          </SessionProvider>
+        </ConfigProvider>
+      </ServicesProvider>,
+    )
+    return fake
+  }
+
+  it('the server-entry step says so, and Continue does not run', async () => {
+    onLine(false)
+    const fake = await boot(DEFAULT_CONFIG, 'unknown')
+    const user = userEvent.setup()
+
+    const submit = await screen.findByRole('button', { name: 'Continue' })
+    expect(screen.getByText(/offline/i)).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Email address or server'), 'alice@example.com')
+    await user.click(submit)
+
+    // Nothing was resolved and nothing was connected: the screen stayed where it was and said why.
+    expect(fake.spies.connect).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument()
+  })
+
+  it('the sign-in step says so, and the password form does not submit', async () => {
+    const BASIC_ONLY: WaxwingConfig = {
+      ...DEFAULT_CONFIG,
+      server: { ...DEFAULT_CONFIG.server, auth: ['basic'] },
+    }
+    onLine(false)
+    const fake = await boot(BASIC_ONLY, 'present')
+    const user = userEvent.setup()
+
+    await user.type(await screen.findByLabelText('Username'), 'alice@waxwing.test')
+    await user.type(screen.getByLabelText('Password'), 'pw')
+    await user.click(screen.getByRole('button', { name: 'Sign in with a password' }))
+
+    expect(screen.getByText(/offline/i)).toBeInTheDocument()
+    expect(fake.spies.startLogin).not.toHaveBeenCalled()
+    expect(fake.spies.connect).not.toHaveBeenCalled()
+  })
+
+  it('and says nothing of the sort while connected — the counter-test', async () => {
+    onLine(true)
+    await boot(DEFAULT_CONFIG, 'unknown')
+    await screen.findByRole('button', { name: 'Continue' })
+    expect(screen.queryByText(/offline/i)).toBeNull()
+  })
+})

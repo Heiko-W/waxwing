@@ -39,6 +39,7 @@
   },
   "onboarding": {
     "welcome": "Welkom bij {{product}}",
+    "offline": "Je bent offline. Aanmelden vereist een verbinding — zodra die er is, staat je e-mail er weer.",
     "connect": {
       "title": "Verbinden met je mailbox",
       "label": "E-mailadres of server",

@@ -39,6 +39,7 @@
   },
   "onboarding": {
     "welcome": "Willkommen bei {{product}}",
+    "offline": "Sie sind offline. Die Anmeldung braucht eine Verbindung — sobald eine da ist, ist Ihre Mail wieder da.",
     "connect": {
       "title": "Mit Ihrem Postfach verbinden",
       "label": "E-Mail-Adresse oder Server",

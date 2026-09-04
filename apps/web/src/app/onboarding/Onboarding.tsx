@@ -13,6 +13,7 @@ import { Button, Dialog, Spinner } from '../../ui'
 import { BrandLinks } from '../BrandLinks'
 import { useConfig } from '../config-context'
 import { useSession } from '../session/context'
+import { useOnline } from '../use-online'
 import { ConnectForm } from './ConnectForm'
 import { LoginForm } from './LoginForm'
 import styles from './onboarding.module.css'
@@ -49,6 +50,16 @@ export function Onboarding() {
     wipeLocalState,
   } = useSession()
   const [resetOpen, setResetOpen] = useState(false)
+  /*
+   * Read HERE rather than in the two forms, which are presentational by contract.
+   *
+   * Offline neither step can complete — the connect step cannot check a server it cannot reach,
+   * and no sign-in leaves the machine — and until FR-OFF-01's cold start landed, that combination
+   * was mostly unreachable: you got here by signing out, which you do while connected. It is now a
+   * normal way to arrive, so the screens say what they can do instead of failing on the press.
+   * `useOnline` gates the OFFER only; every failure path behind it is untouched.
+   */
+  const offline = !useOnline()
   const branding = useConfig().branding
   const productName = branding.productName
   // Resolved against `document.baseURI`, like the shell header — the app can be mounted under any
@@ -69,6 +80,7 @@ export function Onboarding() {
       <ConnectForm
         productName={productName}
         busy={onboarding.busy}
+        offline={offline}
         onSubmit={submitConnect}
         {...(onboarding.error ? { error: onboarding.error } : {})}
       />
@@ -81,6 +93,7 @@ export function Onboarding() {
         oauthAvailable={onboarding.oauthAvailable}
         canEditServer={onboarding.canEditServer}
         busy={onboarding.busy}
+        offline={offline}
         onOAuth={chooseOAuth}
         onBasicSubmit={submitBasic}
         {...(onboarding.canEditServer ? { onBack: editServer } : {})}

@@ -39,6 +39,7 @@
   },
   "onboarding": {
     "welcome": "{{product}} uygulamasına hoş geldiniz",
+    "offline": "Çevrimdışısınız. Oturum açmak için bağlantı gerekir — bağlantı olur olmaz postanız yine burada olur.",
     "connect": {
       "title": "Posta kutunuza bağlanın",
       "label": "E-posta adresi veya sunucu",
