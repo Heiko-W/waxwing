@@ -88,7 +88,7 @@ function seedStaleSelection(): void {
     ids: ['e1'],
     focusIndex: 0,
     sourceMailboxId: 'a',
-    selection: { selected: new Set(['e1']), anchor: 'e1', base: new Set() },
+    selection: { selected: new Set(['e1']), anchor: 'e1', base: new Set(), beyondWindow: false },
   })
   useReadingStore.setState({
     handlers: { emailId: 'e1', mailboxId: 'a' } as unknown as ReadingHandlers,

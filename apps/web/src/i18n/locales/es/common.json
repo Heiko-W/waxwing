@@ -1059,6 +1059,10 @@
     "selected": "{{count}} seleccionados",
     "selectedOfTotal": "{{count}} de {{total}} seleccionados",
     "clearSelection": "Anular la selección",
+    "selectAllInQuery": "Seleccionar los {{total}}",
+    "selectAllOffline": "Está sin conexión. La carpeta completa solo se puede seleccionar con conexión.",
+    "selectAllTooMany": "Más de {{max}} mensajes: demasiados para seleccionarlos en un solo paso.",
+    "selectAllFailed": "No se ha podido leer la carpeta ahora mismo: la selección no ha cambiado.",
     "actions": {
       "archive": "Archivar",
       "delete": "Eliminar",

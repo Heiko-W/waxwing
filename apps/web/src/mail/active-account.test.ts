@@ -34,7 +34,7 @@ describe('resetMailScopedStores', () => {
     useListStore.setState({
       windowKey: 'k',
       ids: ['e1'],
-      selection: { selected: new Set(['e1']), anchor: 'e1', base: new Set() },
+      selection: { selected: new Set(['e1']), anchor: 'e1', base: new Set(), beyondWindow: false },
       sourceMailboxId: 'a',
     })
     useReadingStore.setState({

@@ -1073,6 +1073,10 @@
     "selected": "Vybráno: {{count}}",
     "selectedOfTotal": "Vybráno: {{count}} z {{total}}",
     "clearSelection": "Zrušit výběr",
+    "selectAllInQuery": "Vybrat všech {{total}}",
+    "selectAllOffline": "Jste offline. Celou složku lze vybrat jen při připojení.",
+    "selectAllTooMany": "Více než {{max}} zpráv — příliš mnoho na výběr v jednom kroku.",
+    "selectAllFailed": "Složku se teď nepodařilo načíst — výběr zůstává beze změny.",
     "actions": {
       "archive": "Archivovat",
       "delete": "Smazat",

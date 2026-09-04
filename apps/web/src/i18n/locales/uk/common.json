@@ -1073,6 +1073,10 @@
     "selected": "Вибрано: {{count}}",
     "selectedOfTotal": "Вибрано: {{count}} з {{total}}",
     "clearSelection": "Зняти вибір",
+    "selectAllInQuery": "Вибрати всі {{total}}",
+    "selectAllOffline": "Ви офлайн. Усю папку можна вибрати лише за наявності з’єднання.",
+    "selectAllTooMany": "Понад {{max}} листів — забагато, щоб вибрати за один раз.",
+    "selectAllFailed": "Не вдалося прочитати папку — вибір не змінився.",
     "actions": {
       "archive": "Архівувати",
       "delete": "Видалити",

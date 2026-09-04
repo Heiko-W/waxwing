@@ -1045,6 +1045,10 @@
     "selected": "{{count}} ileti seçildi",
     "selectedOfTotal": "{{total}} iletiden {{count}} tanesi seçildi",
     "clearSelection": "Seçimi kaldır",
+    "selectAllInQuery": "{{total}} iletinin tümünü seç",
+    "selectAllOffline": "Çevrimdışısınız. Klasörün tamamı yalnızca bağlantı varken seçilebilir.",
+    "selectAllTooMany": "{{max}} iletiden fazla — tek adımda seçmek için çok fazla.",
+    "selectAllFailed": "Klasör şu anda okunamadı — seçim değişmedi.",
     "actions": {
       "archive": "Arşivle",
       "delete": "Sil",

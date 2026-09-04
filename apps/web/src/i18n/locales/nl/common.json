@@ -1045,6 +1045,10 @@
     "selected": "{{count}} geselecteerd",
     "selectedOfTotal": "{{count}} van {{total}} geselecteerd",
     "clearSelection": "Selectie opheffen",
+    "selectAllInQuery": "Alle {{total}} selecteren",
+    "selectAllOffline": "Je bent offline. De hele map kan alleen worden geselecteerd als je verbonden bent.",
+    "selectAllTooMany": "Meer dan {{max}} berichten — te veel om in één stap te selecteren.",
+    "selectAllFailed": "De map kon nu niet worden gelezen — de selectie is ongewijzigd.",
     "actions": {
       "archive": "Archiveren",
       "delete": "Verwijderen",

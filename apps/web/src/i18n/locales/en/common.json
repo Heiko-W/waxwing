@@ -1045,6 +1045,10 @@
     "selected": "{{count}} selected",
     "selectedOfTotal": "{{count}} of {{total}} selected",
     "clearSelection": "Clear selection",
+    "selectAllInQuery": "Select all {{total}}",
+    "selectAllOffline": "You are offline. The whole folder can only be selected while connected.",
+    "selectAllTooMany": "More than {{max}} messages — too many to select in one step.",
+    "selectAllFailed": "The folder could not be read just now — the selection is unchanged.",
     "actions": {
       "archive": "Archive",
       "delete": "Delete",

@@ -3,9 +3,9 @@ import { EMPTY_SELECTION, type SelectionState, selectionReducer } from './messag
 
 const IDS = ['a', 'b', 'c', 'd', 'e']
 
-function of(ids: string[], anchor: string | null): SelectionState {
+function of(ids: string[], anchor: string | null, beyondWindow = false): SelectionState {
   const selected = new Set(ids)
-  return { selected, anchor, base: selected }
+  return { selected, anchor, base: selected, beyondWindow }
 }
 
 describe('selectionReducer', () => {
@@ -41,6 +41,38 @@ describe('selectionReducer', () => {
     const all = selectionReducer(EMPTY_SELECTION, { type: 'selectAll', ordered: IDS })
     expect(all.selected.size).toBe(5)
     expect(all.anchor).toBe('e')
+  })
+
+  /**
+   * `selectAllInQuery` (R-08 stage 2) — the ids of the WHOLE query, paged out of `Email/query` by
+   * the caller. It differs from `selectAll` in the one bit downstream needs: `beyondWindow`, which
+   * tells the store's prune that ids outside the loaded window are there on purpose.
+   */
+  it('selectAllInQuery marks the selection as reaching past the window, with no anchor', () => {
+    const all = selectionReducer(EMPTY_SELECTION, {
+      type: 'selectAllInQuery',
+      ids: ['a', 'x', 'y'],
+    })
+    expect([...all.selected]).toEqual(['a', 'x', 'y'])
+    expect(all.beyondWindow).toBe(true)
+    // No anchor: a shift-range resolves it by index in the LOADED window, where 'x' and 'y' are not.
+    expect(all.anchor).toBeNull()
+  })
+
+  it('un-ticking one of them keeps the rest beyond the window', () => {
+    const all = selectionReducer(EMPTY_SELECTION, { type: 'selectAllInQuery', ids: ['a', 'x'] })
+    const one = selectionReducer(all, { type: 'toggle', id: 'a' })
+    expect([...one.selected]).toEqual(['x'])
+    expect(one.beyondWindow).toBe(true)
+  })
+
+  it('anything that REPLACES the selection gives the scope back to the window', () => {
+    const all = selectionReducer(EMPTY_SELECTION, { type: 'selectAllInQuery', ids: ['a', 'x'] })
+    expect(selectionReducer(all, { type: 'selectOne', id: 'a' }).beyondWindow).toBe(false)
+    expect(selectionReducer(all, { type: 'selectAll', ordered: IDS }).beyondWindow).toBe(false)
+    expect(selectionReducer(all, { type: 'clear' }).beyondWindow).toBe(false)
+    // A shift-range from a query selection has no anchor to range FROM, so it starts a new one.
+    expect(selectionReducer(all, { type: 'range', id: 'c', ordered: IDS }).beyondWindow).toBe(false)
   })
 
   it('selectOne replaces the selection', () => {

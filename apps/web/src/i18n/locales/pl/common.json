@@ -1073,6 +1073,10 @@
     "selected": "Zaznaczono: {{count}}",
     "selectedOfTotal": "Zaznaczono: {{count}} z {{total}}",
     "clearSelection": "Wyczyść zaznaczenie",
+    "selectAllInQuery": "Zaznacz wszystkie {{total}}",
+    "selectAllOffline": "Jesteś offline. Cały folder można zaznaczyć tylko przy aktywnym połączeniu.",
+    "selectAllTooMany": "Ponad {{max}} wiadomości — zbyt wiele, aby zaznaczyć je w jednym kroku.",
+    "selectAllFailed": "Nie udało się teraz odczytać folderu — zaznaczenie pozostaje bez zmian.",
     "actions": {
       "archive": "Archiwizuj",
       "delete": "Usuń",

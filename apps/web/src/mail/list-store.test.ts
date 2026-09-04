@@ -65,6 +65,29 @@ describe('useListStore', () => {
     expect([...store().selection.base]).toEqual(['c'])
   })
 
+  /**
+   * A select-all-in-query selection (R-08 stage 2) is judged by a NARROWER rule, and both halves
+   * matter. Applied unchanged, the prune above would take a 300-id selection straight back to the
+   * 50 loaded ids on the next window publication — deleting exactly what the reader asked for.
+   * Applied not at all, a message another client moved out of the folder would stay a target.
+   */
+  it('setWindow keeps ids a select-all-in-query put beyond the window', () => {
+    store().setWindow('w1', ['a', 'b'], 'inbox')
+    store().select({ type: 'selectAllInQuery', ids: ['a', 'b', 'c', 'd'] })
+
+    store().setWindow('w1', ['a', 'b', 'c'], 'inbox') // `loadMore` paged one more in
+    expect([...store().selection.selected].sort()).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('setWindow still drops the one id it can SEE leave the window', () => {
+    store().setWindow('w1', ['a', 'b'], 'inbox')
+    store().select({ type: 'selectAllInQuery', ids: ['a', 'b', 'c', 'd'] })
+
+    store().setWindow('w1', ['b'], 'inbox') // another tab moved 'a' out of the folder
+    expect([...store().selection.selected].sort()).toEqual(['b', 'c', 'd'])
+    expect(store().selection.beyondWindow).toBe(true)
+  })
+
   // THE auto-advance bug: reading 'a', `e` advances the focus to index 1 ('b') and opens it; the move
   // then lands and 'a' leaves the window. A CLAMPED index would leave the focus on index 1 — which is
   // now 'c' — while the reading pane shows 'b': `x` ticks the wrong message and `j` skips one.

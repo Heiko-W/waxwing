@@ -1059,6 +1059,10 @@
     "selected": "{{count}} selecionadas",
     "selectedOfTotal": "{{count}} de {{total}} selecionadas",
     "clearSelection": "Limpar a seleção",
+    "selectAllInQuery": "Selecionar as {{total}}",
+    "selectAllOffline": "Está offline. A pasta inteira só pode ser selecionada com ligação.",
+    "selectAllTooMany": "Mais de {{max}} mensagens — demasiadas para selecionar num só passo.",
+    "selectAllFailed": "Não foi possível ler a pasta agora — a seleção mantém-se.",
     "actions": {
       "archive": "Arquivar",
       "delete": "Eliminar",

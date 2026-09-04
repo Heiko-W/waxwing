@@ -1059,6 +1059,10 @@
     "selected": "{{count}} selezionati",
     "selectedOfTotal": "{{count}} di {{total}} selezionati",
     "clearSelection": "Annulla la selezione",
+    "selectAllInQuery": "Seleziona tutti i {{total}}",
+    "selectAllOffline": "Sei offline. L’intera cartella si può selezionare solo mentre sei connesso.",
+    "selectAllTooMany": "Più di {{max}} messaggi: troppi da selezionare in un solo passaggio.",
+    "selectAllFailed": "Non è stato possibile leggere la cartella: la selezione resta invariata.",
     "actions": {
       "archive": "Archivia",
       "delete": "Elimina",

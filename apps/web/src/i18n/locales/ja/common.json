@@ -1031,6 +1031,10 @@
     "selected": "{{count}} 件を選択中",
     "selectedOfTotal": "{{total}} 件中 {{count}} 件を選択中",
     "clearSelection": "選択を解除",
+    "selectAllInQuery": "{{total}} 件すべてを選択",
+    "selectAllOffline": "オフラインです。フォルダー全体は接続中のみ選択できます。",
+    "selectAllTooMany": "{{max}} 件を超えるため、一度にすべては選択できません。",
+    "selectAllFailed": "フォルダーを読み込めませんでした。選択は変更されていません。",
     "actions": {
       "archive": "アーカイブ",
       "delete": "削除",

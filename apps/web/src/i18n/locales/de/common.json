@@ -1045,6 +1045,10 @@
     "selected": "{{count}} ausgewählt",
     "selectedOfTotal": "{{count}} von {{total}} ausgewählt",
     "clearSelection": "Auswahl aufheben",
+    "selectAllInQuery": "Alle {{total}} auswählen",
+    "selectAllOffline": "Sie sind offline. Der ganze Ordner lässt sich nur mit Verbindung auswählen.",
+    "selectAllTooMany": "Mehr als {{max}} Nachrichten — zu viele, um sie in einem Schritt auszuwählen.",
+    "selectAllFailed": "Der Ordner ließ sich gerade nicht lesen — die Auswahl bleibt unverändert.",
     "actions": {
       "archive": "Archivieren",
       "delete": "Löschen",

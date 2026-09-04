@@ -71,6 +71,8 @@ beforeAll(() => {
 afterAll(() => vi.unstubAllGlobals())
 
 const dispatch = vi.fn()
+/** R-08 stage 2's paginator — the whole query's ids, which no test wants by accident. */
+const collectQueryIds = vi.fn(async () => ({ ids: [] as string[], complete: true }))
 let db: ReplicaDb
 
 /** The exact key useMessageList computes for a folder with the default (date desc, threaded) view. */
@@ -88,6 +90,8 @@ function inboxKey(): string {
 beforeEach(async () => {
   db = freshDb()
   dispatch.mockReset()
+  collectQueryIds.mockReset()
+  collectQueryIds.mockResolvedValue({ ids: [], complete: true })
   // The list's window/focus/selection live in a MODULE-scoped store (M3.8) — reset it, or one test's
   // roving focus leaks into the next.
   useListStore.setState(EMPTY_LIST_STATE)
@@ -101,6 +105,7 @@ beforeEach(async () => {
     fetchSnippets: vi.fn(async () => new Map<string, never>()),
     loadMoreFor: vi.fn(),
     fetchEnvelopes: vi.fn(),
+    collectQueryIds,
     dispatch,
   } as unknown as Parameters<typeof setActiveEngine>[0])
   await putMailboxes(db, 'a', [
@@ -2844,6 +2849,336 @@ describe('select-all over a window that is not the whole folder', () => {
     await user.click(await screen.findByRole('checkbox', { name: 'Select all' }))
     await user.click(await screen.findByRole('button', { name: 'Archive' }))
     expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ kind: 'move', emailIds: ids })
+  })
+})
+
+/**
+ * The second step: "Select all {{total}}" over the whole query (FR-LST-04, R-08 STAGE 2).
+ *
+ * Stage one made the bar honest about a scope it did not have. This is the scope: after a select-all
+ * over an incomplete window the bar offers to page the remaining ids out of `Email/query`
+ * (`Engine.collectQueryIds`) and hand them to the selection, so the Archive that follows really does
+ * move 300 messages rather than 50.
+ *
+ * What these pin, beyond "it selects them": that the ids are a SNAPSHOT and the surface says so (a
+ * message arriving afterwards is neither selected nor claimed), that the selection survives the
+ * window it has outgrown (the store's prune would otherwise take 250 of the 300 straight back), that
+ * the way OUT is as visible as the way in, and that all three refusals — offline, too many, and a
+ * folder that grew past the limit under the click — are spoken on the control rather than swallowed.
+ */
+describe('select all in the folder, not just the window (R-08 stage 2)', () => {
+  /** `loaded` ids in the window, `total` in the folder; returns both the window ids and the rest. */
+  async function seedFolder(loaded: number, total: number) {
+    const all = Array.from({ length: total }, (_, i) => `f${String(i + 1).padStart(4, '0')}`)
+    const ids = all.slice(0, loaded)
+    await putEmails(
+      db,
+      'a',
+      ids.map((id) => email(id, { subject: `Msg ${id}`, keywords: {} })),
+    )
+    await putQueryCache(db, {
+      accountId: 'a',
+      key: inboxKey(),
+      ids,
+      queryState: 'q',
+      total,
+      upToId: ids.at(-1) as string,
+      filter: null,
+      sort: null,
+      collapseThreads: true,
+      lastUsedAt: 1,
+    })
+    return { ids, all }
+  }
+
+  /** Tick the first row, then the header box: the state the second step is offered in. */
+  async function selectTheWindow(user: UserEvent) {
+    await screen.findByText('Msg f0001')
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+    await user.click(await screen.findByRole('checkbox', { name: 'Select all' }))
+  }
+
+  it('is offered exactly where the bar says two numbers', async () => {
+    const user = userEvent.setup()
+    await seedFolder(20, 300)
+    renderList()
+    await selectTheWindow(user)
+
+    expect(await screen.findByText('20 of 300 selected')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Select all 300' })).toBeInTheDocument()
+  })
+
+  it('is not offered when the window IS the folder', async () => {
+    const user = userEvent.setup()
+    await seedFolder(20, 20)
+    renderList()
+    await selectTheWindow(user)
+
+    expect(await screen.findByText('20 selected')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Select all \d/ })).toBeNull()
+  })
+
+  it('is not offered over a hand-picked selection — the reader set that scope', async () => {
+    const user = userEvent.setup()
+    await seedFolder(20, 300)
+    renderList()
+    await screen.findByText('Msg f0001')
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+
+    expect(await screen.findByText('1 selected')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Select all \d/ })).toBeNull()
+  })
+
+  it('pages the query and selects all of it, and the box stops being mixed', async () => {
+    const user = userEvent.setup()
+    const { all } = await seedFolder(20, 300)
+    collectQueryIds.mockResolvedValue({ ids: all, complete: true })
+    renderList()
+    await selectTheWindow(user)
+
+    await user.click(await screen.findByRole('button', { name: 'Select all 300' }))
+
+    expect(await screen.findByText('300 selected')).toBeInTheDocument()
+    expect(collectQueryIds).toHaveBeenCalledWith(inboxKey(), { max: 10_000 })
+    const header = await screen.findByRole('checkbox', { name: 'Clear selection' })
+    expect(header).toBeChecked()
+    expect((header as HTMLInputElement).indeterminate).toBe(false)
+    // …and the offer is gone: it has been taken.
+    expect(screen.queryByRole('button', { name: 'Select all 300' })).toBeNull()
+  })
+
+  it('the bulk action then dispatches all 300, not the 20 on screen', async () => {
+    // THE point of the feature. Without the fix this archived the loaded window.
+    const user = userEvent.setup()
+    const { all } = await seedFolder(20, 300)
+    collectQueryIds.mockResolvedValue({ ids: all, complete: true })
+    renderList()
+    await selectTheWindow(user)
+    await user.click(await screen.findByRole('button', { name: 'Select all 300' }))
+    await screen.findByText('300 selected')
+
+    await user.click(await screen.findByRole('button', { name: 'Archive' }))
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ kind: 'move', emailIds: all })
+  })
+
+  it('the undo carries the whole set back, not the window', async () => {
+    // A 300-message move with a 50-message undo would be worse than no undo at all: it would look
+    // like a way back and leave 250 where they landed. The inverse is one more `move` intent over
+    // the same ids (`useTriage`), and this is what proves it over a selection past the window.
+    const user = userEvent.setup()
+    const { all } = await seedFolder(20, 300)
+    collectQueryIds.mockResolvedValue({ ids: all, complete: true })
+    renderList()
+    await selectTheWindow(user)
+    await user.click(await screen.findByRole('button', { name: 'Select all 300' }))
+    await screen.findByText('300 selected')
+    await user.click(await screen.findByRole('button', { name: 'Archive' }))
+
+    await user.click(await screen.findByRole('button', { name: 'Undo' }))
+    expect(dispatch.mock.calls[1]?.[0]).toMatchObject({
+      kind: 'move',
+      emailIds: all,
+      from: 'archive',
+      to: 'inbox',
+    })
+  })
+
+  it('offers the way back where it offered the way in', async () => {
+    const user = userEvent.setup()
+    const { all } = await seedFolder(20, 300)
+    collectQueryIds.mockResolvedValue({ ids: all, complete: true })
+    renderList()
+    await selectTheWindow(user)
+    await user.click(await screen.findByRole('button', { name: 'Select all 300' }))
+    await screen.findByText('300 selected')
+
+    // The same place, the same size, and the sentence the header checkbox has always used for it.
+    await user.click(await screen.findByRole('button', { name: 'Clear selection' }))
+    await waitFor(() => expect(screen.queryByText('300 selected')).toBeNull())
+    expect(useListStore.getState().selection.selected.size).toBe(0)
+  })
+
+  it('a message that arrives afterwards is not in the set, and nothing claims it is', async () => {
+    // The snapshot rule, on screen: the count stays 300 (it is a fact about what is held) and the
+    // box goes mixed again, because the window now holds a row that is not selected.
+    const user = userEvent.setup()
+    const { ids, all } = await seedFolder(20, 300)
+    collectQueryIds.mockResolvedValue({ ids: all, complete: true })
+    renderList()
+    await selectTheWindow(user)
+    await user.click(await screen.findByRole('button', { name: 'Select all 300' }))
+    await screen.findByText('300 selected')
+
+    await act(async () => {
+      await putEmails(db, 'a', [email('fresh', { subject: 'Just arrived', keywords: {} })])
+      await putQueryCache(db, {
+        accountId: 'a',
+        key: inboxKey(),
+        ids: ['fresh', ...ids],
+        queryState: 'q2',
+        total: 301,
+        upToId: ids.at(-1) as string,
+        filter: null,
+        sort: null,
+        collapseThreads: true,
+        lastUsedAt: 2,
+      })
+    })
+
+    expect(await screen.findByText('300 selected')).toBeInTheDocument()
+    const header = await screen.findByRole('checkbox', { name: 'Select all' })
+    expect((header as HTMLInputElement).indeterminate).toBe(true)
+  })
+
+  it('survives the window it has outgrown, and still loses what left it', async () => {
+    // The store prunes a selected id the window no longer lists. Applied unchanged that would take
+    // 280 of these 300 back on the very next window publication; applied not at all, a message
+    // moved away by another client would stay a target. Both halves are asserted here.
+    const user = userEvent.setup()
+    const { ids, all } = await seedFolder(20, 300)
+    collectQueryIds.mockResolvedValue({ ids: all, complete: true })
+    renderList()
+    await selectTheWindow(user)
+    await user.click(await screen.findByRole('button', { name: 'Select all 300' }))
+    await screen.findByText('300 selected')
+
+    await act(async () => {
+      await putQueryCache(db, {
+        accountId: 'a',
+        key: inboxKey(),
+        ids: ids.slice(1), // f0001 was moved out of the folder by another client
+        queryState: 'q2',
+        total: 299,
+        upToId: ids.at(-1) as string,
+        filter: null,
+        sort: null,
+        collapseThreads: true,
+        lastUsedAt: 2,
+      })
+    })
+
+    expect(await screen.findByText('299 selected')).toBeInTheDocument()
+    expect(useListStore.getState().selection.selected.has('f0001')).toBe(false)
+    expect(useListStore.getState().selection.selected.has('f0300')).toBe(true)
+  })
+
+  it('offline it explains itself instead of failing', async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    try {
+      await seedFolder(20, 300)
+      renderList()
+      await selectTheWindow(user)
+
+      const button = await screen.findByRole('button', { name: 'Select all 300' })
+      expect(button).toHaveAttribute('aria-disabled', 'true')
+      // The sentence is a description, not the name — an icon-less button must still be called
+      // what it does (`Button`'s split).
+      expect(
+        screen.getByText('You are offline. The whole folder can only be selected while connected.'),
+      ).toBeInTheDocument()
+      await user.click(button)
+      expect(collectQueryIds).not.toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+    }
+  })
+
+  it('says so when the folder is too big to select in one step', async () => {
+    const user = userEvent.setup()
+    await seedFolder(20, 50_000)
+    renderList()
+    await selectTheWindow(user)
+
+    const button = await screen.findByRole('button', { name: 'Select all 50000' })
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    expect(
+      screen.getByText('More than 10000 messages — too many to select in one step.'),
+    ).toBeInTheDocument()
+    await user.click(button)
+    expect(collectQueryIds).not.toHaveBeenCalled()
+  })
+
+  it('refuses a partial answer rather than presenting it as the whole', async () => {
+    // The folder grew past the limit between the render and the click: `collectQueryIds` stops at
+    // the cap and says so. Applying 10 000 ids under a label that said 10 004 is exactly the false
+    // promise this work removes.
+    const user = userEvent.setup()
+    const { all } = await seedFolder(20, 300)
+    collectQueryIds.mockResolvedValue({ ids: all.slice(0, 100), complete: false })
+    renderList()
+    await selectTheWindow(user)
+
+    await user.click(await screen.findByRole('button', { name: 'Select all 300' }))
+
+    expect(await screen.findByText('20 of 300 selected')).toBeInTheDocument()
+    expect(
+      await screen.findByText('More than 10000 messages — too many to select in one step.'),
+    ).toBeInTheDocument()
+  })
+
+  it('a request that got no answer says so and leaves the button pressable', async () => {
+    const user = userEvent.setup()
+    const { all } = await seedFolder(20, 300)
+    collectQueryIds.mockRejectedValueOnce(new Error('offline mid-page'))
+    renderList()
+    await selectTheWindow(user)
+
+    await user.click(await screen.findByRole('button', { name: 'Select all 300' }))
+    expect(
+      await screen.findByText(
+        'The folder could not be read just now — the selection is unchanged.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByText('20 of 300 selected')).toBeInTheDocument()
+
+    // Still live — a retry is the sensible next move, so the failure must not disable it.
+    collectQueryIds.mockResolvedValue({ ids: all, complete: true })
+    await user.click(await screen.findByRole('button', { name: 'Select all 300' }))
+    expect(await screen.findByText('300 selected')).toBeInTheDocument()
+  })
+
+  it('has no axe violations in either state of the step', async () => {
+    // New markup in a bar that already had a mixed checkbox: a refusable button whose sentence is a
+    // hidden SIBLING description, and a second row inside the disclosure. axe catches the classic
+    // slips here — a description pointing at nothing, a control with no name.
+    const user = userEvent.setup()
+    const { all } = await seedFolder(20, 300)
+    collectQueryIds.mockResolvedValue({ ids: all, complete: true })
+    const { container } = renderList()
+    await selectTheWindow(user)
+
+    await screen.findByRole('button', { name: 'Select all 300' })
+    await expectNoA11yViolations(container)
+
+    await user.click(screen.getByRole('button', { name: 'Select all 300' }))
+    await screen.findByText('300 selected')
+    await expectNoA11yViolations(container)
+  })
+
+  it('a set paged for the previous folder never lands on this one', async () => {
+    // Switching folder resets the selection; a page still in flight for the old window would tick
+    // ids that are not in this list at all.
+    const user = userEvent.setup()
+    const { all } = await seedFolder(20, 300)
+    let release: ((value: { ids: string[]; complete: boolean }) => void) | undefined
+    collectQueryIds.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve
+      }),
+    )
+    renderList()
+    await selectTheWindow(user)
+    await user.click(await screen.findByRole('button', { name: 'Select all 300' }))
+
+    await act(async () => {
+      useListStore.getState().setWindow('another-folder', [], 'archive')
+    })
+    await act(async () => {
+      release?.({ ids: all, complete: true })
+    })
+
+    expect(useListStore.getState().selection.selected.size).toBe(0)
   })
 })
 

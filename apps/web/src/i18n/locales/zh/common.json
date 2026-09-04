@@ -1031,6 +1031,10 @@
     "selected": "已选择{{count}}封",
     "selectedOfTotal": "已选择 {{total}} 封中的 {{count}} 封",
     "clearSelection": "取消选择",
+    "selectAllInQuery": "全选 {{total}} 封",
+    "selectAllOffline": "您当前处于离线状态。整个文件夹只能在联网时全选。",
+    "selectAllTooMany": "超过 {{max}} 封邮件，无法一次性全选。",
+    "selectAllFailed": "暂时无法读取此文件夹，选择保持不变。",
     "actions": {
       "archive": "归档",
       "delete": "删除",

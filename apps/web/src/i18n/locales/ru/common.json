@@ -1073,6 +1073,10 @@
     "selected": "Выбрано: {{count}}",
     "selectedOfTotal": "Выбрано: {{count}} из {{total}}",
     "clearSelection": "Снять выделение",
+    "selectAllInQuery": "Выбрать все {{total}}",
+    "selectAllOffline": "Вы офлайн. Всю папку можно выбрать только при подключении.",
+    "selectAllTooMany": "Больше {{max}} писем — слишком много, чтобы выбрать за один раз.",
+    "selectAllFailed": "Не удалось прочитать папку — выделение не изменилось.",
     "actions": {
       "archive": "Архивировать",
       "delete": "Удалить",

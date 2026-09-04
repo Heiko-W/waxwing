@@ -1059,6 +1059,10 @@
     "selected": "Sélection : {{count}}",
     "selectedOfTotal": "Sélection : {{count}} sur {{total}}",
     "clearSelection": "Annuler la sélection",
+    "selectAllInQuery": "Sélectionner les {{total}}",
+    "selectAllOffline": "Vous êtes hors ligne. Le dossier entier ne peut être sélectionné qu’avec une connexion.",
+    "selectAllTooMany": "Plus de {{max}} messages : trop nombreux pour une sélection en une seule fois.",
+    "selectAllFailed": "Le dossier n’a pas pu être lu : la sélection reste inchangée.",
     "actions": {
       "archive": "Archiver",
       "delete": "Supprimer",
