@@ -157,3 +157,12 @@ case this excludes, and it does not claim "offline" wrongly.
   header on the configured host.
 - **Devices that signed in before this shipped have credentials and no document**, and get the
   sign-in form offline exactly as they did. The first successful connect fixes that silently.
+- **Two things the work exposed, fixed in the same change rather than filed.** The same-origin
+  probe reported a request that got no answer as "no server here", so a device with no stored
+  session opened offline was handed the manual server-entry step — the most technical screen this
+  app has, asking for an address it had no way to check. It now answers `present | absent |
+  unknown`, and `unknown` falls back to the last server this browser actually used; both
+  onboarding steps say why they cannot act while offline, in the vocabulary `LoginForm` already
+  used for an unavailable OAuth button. And the push reconcile pass, which is a run of
+  authenticated JMAP writes, now stands down while there is no network: a rare accident before
+  this ADR, and the normal state of a session that starts offline after it.

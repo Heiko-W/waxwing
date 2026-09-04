@@ -2669,7 +2669,22 @@ explicit owner decision:
   app says out loud, in the header chip, the outbox and `unavailableReason` on the screens that
   write straight to JMAP, and all of it is driven by `navigator.onLine`, so it applies to a cold
   start unchanged. 13 mutations run, all red, including the E2E one — the tripwire's own
-  instruction.
+  instruction. **Two follow-ups shipped with it, both found by the work itself.** (1) The
+  same-origin probe reported a request that got no answer as "no server here", and step C of the
+  boot read that as the cue to open the MANUAL server-entry step — so the reader who could do least
+  about it, no stored session and no network, got the most technical screen this app has, asking
+  for an address it had no way to check. `probe` now answers `present | absent | unknown`; a silence
+  falls back to the last server this browser actually used, and only a genuinely first launch with
+  no connection still reaches the server-entry step. Both onboarding steps say why they cannot act
+  while offline, in the shape `LoginForm` already used for an unavailable OAuth button
+  (`aria-disabled` plus a visible note), with the submit guarded in the handler as well — Return in
+  a field submits a form without the button seeing a click. One new string, `onboarding.offline`,
+  in all 14 bundles. `defaultServices` had no test at all before this: the production seam every
+  other test replaces with a fake, which is why the defect was invisible to 5800 tests. (2) The
+  push reconcile pass now takes `online` and returns `cannotAct` without it — a run of
+  authenticated JMAP writes into a dead network was a rare accident before the cold start and the
+  normal case after it. The guard sits BELOW the explicit-no branch on purpose: switching
+  notifications off must still take the browser subscription down, and `unsubscribe()` is local.
 - Offline search over cached subset (FR-SRCH-04).
 - ~~PWA badging (FR-NOTIF-04)~~ — **shipped in M5.3**; notification actions (FR-NOTIF-05)
   remain (ADR-017 explains why they are harder than they look).

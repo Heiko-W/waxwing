@@ -190,20 +190,30 @@ test.describe('M3.10 pwa', () => {
     await context.setOffline(true)
     await page.reload()
 
-    // No session: no folder tree, no mail, and onboarding on screen instead.
+    // No session: no folder tree, no mail — and the SIGN-IN step for the server this browser last
+    // used, not the manual "connect to a server" dialog.
     //
-    // WHICH onboarding step is deliberately not pinned. With no persisted session the boot falls
-    // through to the same-origin probe, and offline that probe cannot answer — so this lands on
-    // the manual "connect to a server" step ("Welcome to Waxwing") rather than the sign-in step
-    // ("Webmail for …"). That is pre-existing behaviour, unchanged by FR-OFF-01, and pinning it
-    // here would make this test fail for a reason it is not about.
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(
-      /Welcome to Waxwing|Webmail for/,
-      { timeout: SYNC_BUDGET_MS },
-    )
+    // That distinction is the point of pinning the heading. The boot falls through to the
+    // same-origin probe, which offline cannot answer, and a probe that reported its own silence as
+    // "no server here" used to open the most technical screen this app has in front of the one
+    // reader who could do least about it. A question nobody answered was not measured; the last
+    // server this browser actually reached was.
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Webmail for', {
+      timeout: SYNC_BUDGET_MS,
+    })
     expect(await page.evaluate(() => navigator.onLine)).toBe(false)
     await expect(page.getByRole('navigation', { name: 'Folders' })).toBeHidden()
     await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeHidden()
+
+    // And the screen says what it can do rather than failing on the press. On this deployment
+    // OAuth leads, so the control on offer is the server sign-in button; it is `aria-disabled`
+    // and the note under it — which normally explains the redirect — carries the offline sentence
+    // instead. `Onboarding` reads `navigator.onLine` and hands it to both forms.
+    await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+    await expect(page.getByText(/You are offline\./)).toBeVisible()
   })
 
   test('a real read session leaves no JMAP bytes in Cache Storage', async ({ page }) => {
