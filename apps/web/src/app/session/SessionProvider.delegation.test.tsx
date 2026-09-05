@@ -107,9 +107,10 @@ describe('the delegation probe at connect (S-4)', () => {
     // The one area she really shared is the one that survives.
     expect(screen.getByTestId('files').textContent).toBe('shared-1')
 
-    // ONE round trip for the whole question: three areas × one shared account, one batch.
+    // ONE round trip for the whole question: four areas × one shared account, one batch (S-4b
+    // added the calendar probe; the rail that renders it landed in the same package).
     expect(call).toHaveBeenCalledTimes(1)
-    expect(call.mock.calls[0]?.[0]).toHaveLength(3)
+    expect(call.mock.calls[0]?.[0]).toHaveLength(4)
   })
 
   it('keeps a shared account in every area the server does serve', async () => {

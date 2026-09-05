@@ -44,10 +44,22 @@ import {
   SlidersHorizontal,
   TriangleAlert,
 } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import {
+  lazy,
+  type ReactNode,
+  Suspense,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useTranslation } from 'react-i18next'
-import { calendarPath, useNavigate, useRoute } from '../app/route'
+import { ACCOUNT_PARAM, calendarPath, Link, useNavigate, useRoute } from '../app/route'
+import { delegatedAccountsFor } from '../app/session/accounts'
 import { useSessionOptional } from '../app/session/context'
+import type { DelegatedAccount } from '../app/session/types'
 import { useLayoutTier } from '../app/shell/layout'
 import { ScreenBar } from '../app/shell/ScreenBar'
 import shellStyles from '../app/shell/shell.module.css'
@@ -55,9 +67,10 @@ import { useOnline } from '../app/use-online'
 import { formatDate, formatRelativeTime } from '../i18n/formatters'
 import { makeCalendarSharingClient } from '../sharing/calendar-share-client'
 import { IncomingShares } from '../sharing/IncomingShares'
+import type { ShareAnnouncement } from '../sharing/incoming'
 import { currentUserPrincipalId, principalLabel } from '../sharing/principals'
 import { useIncomingShares } from '../sharing/use-incoming-shares'
-import { useCalendars } from '../sync'
+import { ReplicaProvider, useCalendars, useReplicaOptional } from '../sync'
 import { RECONNECT_DEBOUNCE_MS } from '../sync/engine'
 import { Button, Dialog, EmptyState, IconButton, Menu, Select, Spinner, useToast } from '../ui'
 import { type BusyPeriod, toBusyPeriods } from './availability'
@@ -137,7 +150,100 @@ export interface CalendarPageProps {
   readonly today?: Date
 }
 
-export default function CalendarPage(props: CalendarPageProps) {
+interface CalendarContentProps extends CalendarPageProps {
+  /** The signed-in user's own account id (session). */
+  readonly ownAccountId: Id | null
+  /** The account the screen ACTS in — own, or a delegated `?account=` one (S-4b). */
+  readonly actingAccountId: Id | null
+}
+
+/**
+ * The calendar screen (S-4b wrapper). Decides which account the screen acts in — the user's own by
+ * default, or a delegated account named by `?account=` (a group the user belongs to, or an
+ * individual calendar share) — and scopes the whole screen to it through a nested
+ * {@link ReplicaProvider}, so the replica-backed events and the per-account live client agree on
+ * whose calendars they draw. With nothing shared there is nothing to scope: the content renders
+ * without the extra provider, and the single-account path stays as it was.
+ */
+export default function CalendarPage(props: CalendarPageProps): ReactNode {
+  const connected = useSessionOptional()
+  const route = useRoute()
+  const ownAccountId = connected?.accountId ?? null
+  const sharedCalendarAccounts = useMemo(
+    () => (connected === null ? [] : delegatedAccountsFor(connected, 'calendar')),
+    [connected],
+  )
+  /* B37's vetting, calendar-shaped: only an account the server actually serves `Calendar/get` for
+     may be named by the route; anything else falls back to the user's own account. */
+  const actingAccountId = useMemo(() => {
+    if (ownAccountId === null) return null
+    const fromRoute = route.search.get(ACCOUNT_PARAM)
+    return fromRoute !== null && sharedCalendarAccounts.some((account) => account.id === fromRoute)
+      ? fromRoute
+      : ownAccountId
+  }, [ownAccountId, route.search, sharedCalendarAccounts])
+  const replica = useReplicaOptional()
+  const content = (
+    <CalendarContent {...props} ownAccountId={ownAccountId} actingAccountId={actingAccountId} />
+  )
+  if (replica === null || actingAccountId === null || actingAccountId === ownAccountId) {
+    return content
+  }
+  return (
+    <ReplicaProvider accountId={actingAccountId} db={replica.db}>
+      {content}
+    </ReplicaProvider>
+  )
+}
+
+/**
+ * The account whose calendars the screen is showing (S-4b) — one compact entry per calendar-served
+ * account, the own account first then each delegated/group one. Rendered in the rail AND in the
+ * phone sheet, so a group's calendars are one click away on every viewport. `aria-current` marks
+ * the acting account; `onNavigate` lets the phone sheet close itself after the switch.
+ */
+function CalendarAccountNav({
+  ownAccountId,
+  ownName,
+  accounts,
+  actingAccountId,
+  onNavigate,
+}: {
+  readonly ownAccountId: Id
+  readonly ownName: string | null
+  readonly accounts: readonly DelegatedAccount[]
+  readonly actingAccountId: Id | null
+  readonly onNavigate?: () => void
+}): ReactNode {
+  return (
+    <ul className={styles.calendarAccounts}>
+      <li>
+        <Link
+          to={calendarPath()}
+          className={styles.calendarAccountLink}
+          {...(actingAccountId === ownAccountId ? { 'aria-current': 'page' as const } : {})}
+          {...(onNavigate !== undefined ? { onClick: onNavigate } : {})}
+        >
+          {ownName}
+        </Link>
+      </li>
+      {accounts.map((calendarAccount) => (
+        <li key={calendarAccount.id}>
+          <Link
+            to={calendarPath(undefined, calendarAccount.id)}
+            className={styles.calendarAccountLink}
+            {...(actingAccountId === calendarAccount.id ? { 'aria-current': 'page' as const } : {})}
+            {...(onNavigate !== undefined ? { onClick: onNavigate } : {})}
+          >
+            {calendarAccount.name}
+          </Link>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarContentProps) {
   const { t, i18n } = useTranslation()
   const route = useRoute()
   const navigate = useNavigate()
@@ -165,13 +271,27 @@ export default function CalendarPage(props: CalendarPageProps) {
    * screens that never did.
    */
   const online = useOnline()
-  const [calendars, setCalendars] = useState<Calendar[]>([])
-  /**
-   * Whether {@link calendars} is an ANSWER or just the initial empty value.
+  /*
+   * The network's calendar answer, TAGGED with the account it answers about.
    *
-   * Without it the first paint cannot tell "this account has no calendars" from "the list has not
-   * arrived", and the range query would either fetch nothing for ever or fetch everything once and
-   * then contradict itself.
+   * Without the tag the fetched list is a boolean "loaded" and would survive an account switch
+   * (S-4b): for the moment between the route change and the refetch, the rail would draw the OLD
+   * account's calendars while the screen already acts in the new one — and a tick in that window
+   * would write `isVisible` for an old-account id against the NEW account (the ADR-018 collision).
+   * A tagged answer only counts for the account it came from; a mid-flight answer that lands after
+   * a switch is simply ignored by the acting account and stays valid for the one it names.
+   */
+  const [calendars, setCalendars] = useState<{
+    readonly accountId: Id | null
+    readonly list: Calendar[]
+  }>({
+    accountId: null,
+    list: [],
+  })
+  /*
+   * `calendarsLoaded` sits BESIDE the tag on purpose: the tag alone cannot tell "never arrived"
+   * from "arrived, and it is empty" (the initial tag equals the session-less account id), and the
+   * flag alone cannot tell the previous account's answer from the acting one's.
    */
   const [calendarsLoaded, setCalendarsLoaded] = useState(false)
   /** `{ placed }` edits, `{ placed: null }` creates on `day`. */
@@ -210,12 +330,23 @@ export default function CalendarPage(props: CalendarPageProps) {
   /*
    * Incoming calendar shares (S-1, extended to this type by S-2).
    *
-   * No `onOpen` is passed to the strip: following the card means opening someone ELSE's calendar,
-   * and this screen is wired to `connected.accountId` throughout — `sharing/probe.ts` does not even
-   * have a `calendar` area, because there is no rail that could render one. The card announces the
-   * share; a button that led back to the reader's own calendars would be a lie.
+   * Since S-4b the strip CAN open the card: the wrapper scopes the screen to the share's account
+   * (`?account=`), so an Open button now leads somewhere true — the account whose calendar was
+   * shared — instead of back to the reader's own calendars. The account is the announcement's
+   * `objectAccountId`, which the session lists by name; a card for the reader's OWN account (which
+   * the server does not send) would just open the plain calendar.
    */
   const incoming = useIncomingShares('Calendar')
+  const openSharedCalendar = useCallback(
+    (announcement: ShareAnnouncement): void => {
+      if (announcement.accountId === ownAccountId) {
+        navigate(calendarPath())
+        return
+      }
+      navigate(calendarPath(undefined, announcement.accountId))
+    },
+    [navigate, ownAccountId],
+  )
   /** The `.ics` import sheet (K-4). */
   const [importing, setImporting] = useState(false)
   /** The calendar whose share dialog is open (S-2), or `null`. */
@@ -266,7 +397,21 @@ export default function CalendarPage(props: CalendarPageProps) {
 
   const injected = props.client
   const sessionClient = connected?.client ?? null
-  const accountId = connected?.accountId ?? null
+  /* The acting account (S-4b): own, or the delegated `?account=` one the wrapper scoped us to. */
+  const accountId = actingAccountId
+  /*
+   * The account entries the rail offers (S-4b): the own account plus every delegated account whose
+   * `calendar` area the server serves — a group the user belongs to has no incoming share card, so
+   * this row is its only standing door. Names come from the session (data, not translations).
+   */
+  const ownName =
+    ownAccountId === null
+      ? null
+      : (connected?.jmapSession?.accounts?.[ownAccountId]?.name ?? ownAccountId)
+  const calendarAccounts = useMemo(
+    () => (connected === null ? [] : delegatedAccountsFor(connected, 'calendar')),
+    [connected],
+  )
 
   /**
    * The server's own ceiling on participants, from the account capability (measured `20`).
@@ -320,12 +465,18 @@ export default function CalendarPage(props: CalendarPageProps) {
   const replicaCalendars = useCalendars()
 
   /**
-   * What the rail draws and what the month filter names — the network's answer once it has one, the
-   * replica's until then. `null` while neither has answered.
+   * What the rail draws and what the month filter names — the network's answer once it has one FOR
+   * THE ACTING ACCOUNT, the replica's until then (and forever, for an account the network never
+   * answered). `null` while neither has answered: `accountId: null` means "not loaded for anyone",
+   * a foreign tag means "loaded for another account", and only a matching tag is an ANSWER — so an
+   * empty list still means "this account has no calendars" and never "not known yet".
    */
   const effectiveCalendars = useMemo<Calendar[] | null>(
-    () => (calendarsLoaded ? calendars : (replicaCalendars ?? null)),
-    [calendars, calendarsLoaded, replicaCalendars],
+    () =>
+      calendarsLoaded && calendars.accountId === accountId
+        ? calendars.list
+        : (replicaCalendars ?? null),
+    [calendars, calendarsLoaded, accountId, replicaCalendars],
   )
 
   /**
@@ -409,13 +560,18 @@ export default function CalendarPage(props: CalendarPageProps) {
   const loadCalendars = useCallback(async () => {
     if (client === null) return
     try {
-      setCalendars(await client.listCalendars())
+      // Tagged with the account the answer came from (null = no session, the test/single case); a
+      // switch mid-flight makes this answer land for the OLD account, where it is kept and ignored
+      // by the new acting account. `null === null` still matches, so the tag costs the session-less
+      // path nothing.
+      const list = await client.listCalendars()
+      setCalendars({ accountId, list })
       setCalendarsLoaded(true)
       setFailed(false)
     } catch {
       setFailed(true)
     }
-  }, [client])
+  }, [client, accountId])
 
   useEffect(() => {
     void loadCalendars()
@@ -451,7 +607,10 @@ export default function CalendarPage(props: CalendarPageProps) {
   }, [online, loadCalendars])
 
   /** The share dialog's subject, read from the LIVE list — see {@link sharingId}. */
-  const sharing = sharingId === null ? null : (calendars.find((c) => c.id === sharingId) ?? null)
+  const sharing =
+    sharingId === null || calendars.accountId !== accountId
+      ? null
+      : (calendars.list.find((calendar) => calendar.id === sharingId) ?? null)
 
   useEffect(() => {
     if (client === null) return
@@ -668,9 +827,14 @@ export default function CalendarPage(props: CalendarPageProps) {
    */
   const toggleCalendar = async (calendar: Calendar, visible: boolean): Promise<void> => {
     if (client === null) return
-    setCalendars((current) =>
-      current.map((entry) => (entry.id === calendar.id ? { ...entry, isVisible: visible } : entry)),
-    )
+    // The optimistic patch lives under the tag that made the row drawable in the first place — the
+    // acting account's own answer (S-4b).
+    setCalendars((current) => ({
+      ...current,
+      list: current.list.map((entry) =>
+        entry.id === calendar.id ? { ...entry, isVisible: visible } : entry,
+      ),
+    }))
     try {
       await client.updateCalendar(calendar.id, { isVisible: visible })
     } catch (error) {
@@ -959,6 +1123,14 @@ export default function CalendarPage(props: CalendarPageProps) {
       <div className={styles.body}>
         {tier !== 'phone' && (
           <aside className={styles.rail} aria-label={t('calendar.calendars.title')}>
+            {ownAccountId !== null && calendarAccounts.length > 0 && (
+              <CalendarAccountNav
+                ownAccountId={ownAccountId}
+                ownName={ownName}
+                accounts={calendarAccounts}
+                actingAccountId={accountId}
+              />
+            )}
             <CalendarList
               calendars={shownCalendars}
               canCreate={mayCreateCalendar(connected?.jmapSession ?? null, accountId) && online}
@@ -986,7 +1158,11 @@ export default function CalendarPage(props: CalendarPageProps) {
             {/* LAST in the rail (B61): a share card arrives on a sync pass, and above the calendar
                 list it moved every row out from under the pointer mid-click. Below it, nothing is
                 pushed. */}
-            <IncomingShares announcements={incoming.announcements} onDismiss={incoming.dismiss} />
+            <IncomingShares
+              announcements={incoming.announcements}
+              onDismiss={incoming.dismiss}
+              onOpen={openSharedCalendar}
+            />
           </aside>
         )}
         <div className={styles.main}>
@@ -1096,6 +1272,15 @@ export default function CalendarPage(props: CalendarPageProps) {
           title={t('calendar.calendars.title')}
         >
           <div className={styles.calendarSheet}>
+            {ownAccountId !== null && calendarAccounts.length > 0 && (
+              <CalendarAccountNav
+                ownAccountId={ownAccountId}
+                ownName={ownName}
+                accounts={calendarAccounts}
+                actingAccountId={accountId}
+                onNavigate={() => setCalendarsOpen(false)}
+              />
+            )}
             <CalendarList
               calendars={shownCalendars}
               heading={false}

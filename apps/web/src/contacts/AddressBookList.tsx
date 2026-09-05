@@ -33,15 +33,17 @@ import type { Id } from '@waxwing/jmap'
 import { BookOpen, Ellipsis, Lock, Plus, UserPlus, UsersRound } from 'lucide-react'
 import { type FormEvent, lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { contactsPath, Link } from '../app/route'
+import { ACCOUNT_PARAM, contactsPath, Link, useRoute } from '../app/route'
+import { delegatedAccountsFor } from '../app/session/accounts'
 import { useSessionOptional } from '../app/session/context'
+import type { DelegatedAccount } from '../app/session/types'
 import { makeAddressBookSharingClient } from '../sharing/addressbook-client'
 import { mayShareAddressBook } from '../sharing/addressbook-roles'
 import { IncomingShares } from '../sharing/IncomingShares'
 import { currentUserPrincipalId } from '../sharing/principals'
 import { useIncomingShares } from '../sharing/use-incoming-shares'
 import type { AddressBookRow } from '../sync'
-import { useAddressBooks } from '../sync'
+import { useAddressBooks, useAddressBooksFor } from '../sync'
 import {
   Badge,
   Button,
@@ -91,6 +93,7 @@ export function AddressBookList({ selectedBookId, onSelectBook }: AddressBookLis
   const books = useAddressBooks()
   const actions = useAddressBookActions()
   const connected = useSessionOptional()
+  const route = useRoute()
   const [dialog, setDialog] = useState<BookDialog | null>(null)
   /*
    * The share seam (S-2). Online-only and outside the replica by design — see
@@ -113,30 +116,60 @@ export function AddressBookList({ selectedBookId, onSelectBook }: AddressBookLis
   /*
    * Incoming address-book shares (S-1, extended to this type by S-2).
    *
-   * No `onOpen`: opening someone else's address book means scoping this whole screen to a foreign
-   * account, and it is wired to `connected.accountId` throughout. The card announces the share and
-   * offers Hide — see `IncomingShares` on why a button that led nowhere would be worse.
+   * The card announces the share and offers Hide — see `IncomingShares` on why a button that led
+   * nowhere would be worse. Opening the shared content happens in the rail: the delegated account it
+   * arrived for gets its own section below (S-4).
    */
   const incoming = useIncomingShares('AddressBook')
 
   const takenNames = (except?: Id): string[] =>
     (books ?? []).filter((book) => book.id !== except).map((book) => book.name)
 
-  return (
-    <div className={styles.books}>
-      <div className={styles.railHeader}>
-        <h2 className={styles.railTitle}>{t('contacts.books.title')}</h2>
-        <IconButton
-          label={t('contacts.books.new')}
-          variant="ghost"
-          size="sm"
-          // Until the books query resolves there is no name list to check a new name against.
-          disabled={books === undefined}
-          onClick={() => setDialog({ kind: 'create' })}
-        >
-          <Plus />
-        </IconButton>
-      </div>
+  /*
+   * The accounts whose `contacts` area the server actually serves (S-4). With none, this rail is
+   * byte-for-byte the pre-S-4 one — no grouping, no extra landmark, and the tests stand unchanged.
+   */
+  const ownAccountId = connected?.accountId ?? null
+  const sharedAccounts = useMemo(
+    () => (connected === null ? [] : delegatedAccountsFor(connected, 'contacts')),
+    [connected],
+  )
+  const grouped = ownAccountId !== null && sharedAccounts.length > 0
+  /*
+   * The account the CONTACTS SCREEN is acting in, from `?account=` on the route (S-4, B37's vetting:
+   * only a granted account may be named, anything else falls back to the user's own).
+   */
+  const actingAccountId = useMemo(() => {
+    if (ownAccountId === null) return null
+    const fromRoute = route.search.get(ACCOUNT_PARAM)
+    return fromRoute !== null && sharedAccounts.some((account) => account.id === fromRoute)
+      ? fromRoute
+      : ownAccountId
+  }, [ownAccountId, route.search, sharedAccounts])
+  /*
+   * Own-book management is offered only while acting in the OWN account. The action hooks bind to the
+   * ACTING account's replica context, so a rename/share/delete dispatched from the own section while
+   * visiting a delegated account would write against the wrong account — the ADR-018 id collision,
+   * in its contacts form. While visiting, the own rows are plain links back to the own account.
+   */
+  const canManageOwn = !grouped || actingAccountId === ownAccountId
+
+  const booksRegion =
+    grouped && ownAccountId !== null ? (
+      <GroupedBookList
+        ownAccountId={ownAccountId}
+        sharedAccounts={sharedAccounts}
+        actingAccountId={actingAccountId}
+        canManageOwn={canManageOwn}
+        selectedBookId={selectedBookId}
+        onRename={(book) => setDialog({ kind: 'rename', book })}
+        onDelete={(book) => setDialog({ kind: 'delete', book })}
+        {...(sharingClient === null
+          ? {}
+          : { onShare: (book) => setDialog({ kind: 'share', book }) })}
+        {...(onSelectBook !== undefined ? { onSelectBook } : {})}
+      />
+    ) : (
       <ul className={styles.bookList}>
         <li>
           <Link
@@ -171,6 +204,28 @@ export function AddressBookList({ selectedBookId, onSelectBook }: AddressBookLis
           ))
         )}
       </ul>
+    )
+
+  return (
+    <div className={styles.books}>
+      <div className={styles.railHeader}>
+        <h2 className={styles.railTitle}>{t('contacts.books.title')}</h2>
+        {/* While visiting a delegated account the rail's create button would dispatch against the
+            ACTING account's engine — hide it rather than write to the wrong account (S-4). */}
+        {canManageOwn && (
+          <IconButton
+            label={t('contacts.books.new')}
+            variant="ghost"
+            size="sm"
+            // Until the books query resolves there is no name list to check a new name against.
+            disabled={books === undefined}
+            onClick={() => setDialog({ kind: 'create' })}
+          >
+            <Plus />
+          </IconButton>
+        )}
+      </div>
+      {booksRegion}
 
       {/* LAST in the rail (B61): a share card arrives on a sync pass, and above the list it moved
           every row out from under the pointer mid-click. Below it, nothing is pushed. */}
@@ -256,6 +311,137 @@ export function AddressBookList({ selectedBookId, onSelectBook }: AddressBookLis
   )
 }
 
+/**
+ * The grouped rail (S-4): an "All Contacts" entry scoped to the ACTING account, then the own account's
+ * books, then one labelled section per delegated account whose `contacts` area the server serves — the
+ * Apple-Mail/iCloud pattern `AccountTrees` already applies to the folder rail. Selecting a delegated
+ * book opens it in ITS account (the link carries `?account=`); the pane follows via the acting-account
+ * scope in `ContactsScreen`.
+ */
+function GroupedBookList({
+  ownAccountId,
+  sharedAccounts,
+  actingAccountId,
+  canManageOwn,
+  selectedBookId,
+  onRename,
+  onDelete,
+  onShare,
+  onSelectBook,
+}: {
+  readonly ownAccountId: Id
+  readonly sharedAccounts: readonly DelegatedAccount[]
+  readonly actingAccountId: Id | null
+  readonly canManageOwn: boolean
+  readonly selectedBookId: string | undefined
+  readonly onRename: (book: AddressBookRow) => void
+  readonly onDelete: (book: AddressBookRow) => void
+  readonly onShare?: (book: AddressBookRow) => void
+  readonly onSelectBook?: () => void
+}) {
+  const { t } = useTranslation()
+  // "All Contacts" is the acting account's bookless scope, so its link names that account when the
+  // screen is visiting a delegated one — an unqualified link would snap back to the reader's own.
+  const allContactsAccountId =
+    actingAccountId !== null && actingAccountId !== ownAccountId ? actingAccountId : undefined
+
+  return (
+    <>
+      <ul className={styles.bookList}>
+        <li>
+          <Link
+            to={contactsPath(undefined, undefined, allContactsAccountId)}
+            className={styles.bookItem}
+            {...(onSelectBook ? { onClick: onSelectBook } : {})}
+            {...(selectedBookId === undefined ? { 'aria-current': 'page' as const } : {})}
+          >
+            <UsersRound aria-hidden="true" className={styles.bookIcon} />
+            <span className={styles.bookName}>{t('contacts.books.all')}</span>
+          </Link>
+        </li>
+        <AccountBookRows
+          accountId={ownAccountId}
+          selectedBookId={selectedBookId}
+          actingAccountId={actingAccountId}
+          actionable={canManageOwn}
+          onRename={onRename}
+          onDelete={onDelete}
+          {...(canManageOwn && onShare !== undefined ? { onShare } : {})}
+          {...(onSelectBook !== undefined ? { onSelectBook } : {})}
+        />
+      </ul>
+      {sharedAccounts.map((account) => (
+        <section key={account.id} className={styles.books} aria-label={account.name}>
+          <h3 className={styles.railTitle}>{account.name}</h3>
+          <ul className={styles.bookList}>
+            <AccountBookRows
+              accountId={account.id}
+              selectedBookId={selectedBookId}
+              actingAccountId={actingAccountId}
+              actionable={false}
+              linkAccountId={account.id}
+              {...(onSelectBook !== undefined ? { onSelectBook } : {})}
+            />
+          </ul>
+        </section>
+      ))}
+    </>
+  )
+}
+
+/**
+ * The rows for ONE account's books (S-4) — reads the replica for that account, never the acting
+ * context's, because the rail lists every account beside the one being acted in. `actionable` is the
+ * OWN section's management affordances, offered only while acting in the own account (see
+ * `AddressBookList` on why visiting rows must stay plain links).
+ */
+function AccountBookRows({
+  accountId,
+  selectedBookId,
+  actingAccountId,
+  actionable,
+  onRename,
+  onDelete,
+  onShare,
+  onSelectBook,
+  linkAccountId,
+}: {
+  readonly accountId: Id
+  readonly selectedBookId: string | undefined
+  readonly actingAccountId: Id | null
+  readonly actionable: boolean
+  readonly onRename?: (book: AddressBookRow) => void
+  readonly onDelete?: (book: AddressBookRow) => void
+  readonly onShare?: (book: AddressBookRow) => void
+  readonly onSelectBook?: () => void
+  readonly linkAccountId?: Id
+}) {
+  const { t } = useTranslation()
+  const books = useAddressBooksFor(accountId)
+  if (books === undefined) {
+    return (
+      <li className={styles.railLoading}>
+        <Spinner size="sm" label={t('contacts.books.loading')} />
+      </li>
+    )
+  }
+  if (books.length === 0) {
+    return <li className={styles.railEmpty}>{t('contacts.books.empty')}</li>
+  }
+  return books.map((book) => (
+    <AddressBookItem
+      key={book.id}
+      book={book}
+      {...(linkAccountId !== undefined ? { linkAccountId } : {})}
+      selected={actingAccountId === accountId && book.id === selectedBookId}
+      {...(onSelectBook !== undefined ? { onSelect: onSelectBook } : {})}
+      {...(actionable && onRename !== undefined ? { onRename: () => onRename(book) } : {})}
+      {...(actionable && onDelete !== undefined ? { onDelete: () => onDelete(book) } : {})}
+      {...(actionable && onShare !== undefined ? { onShare: () => onShare(book) } : {})}
+    />
+  ))
+}
+
 function isShared(book: AddressBookRow): boolean {
   const shareWith = book.shareWith
   return shareWith != null && Object.keys(shareWith).length > 0
@@ -268,14 +454,18 @@ function AddressBookItem({
   onRename,
   onDelete,
   onShare,
+  linkAccountId,
 }: {
   book: AddressBookRow
   selected: boolean
   onSelect?: () => void
-  onRename: () => void
-  onDelete: () => void
+  /** Absent (or hidden while visiting a delegated account) ⇒ the row is a plain link. */
+  onRename?: () => void
+  onDelete?: () => void
   /** Absent when there is no session to share through. */
   onShare?: (() => void) | undefined
+  /** Qualify the row's route with this account (S-4); `undefined` = the user's own account. */
+  linkAccountId?: Id
 }) {
   const { t } = useTranslation()
   const readOnly = book.myRights.mayWrite === false
@@ -286,12 +476,12 @@ function AddressBookItem({
    */
   const canShare = onShare !== undefined && mayShareAddressBook(book.myRights)
   const items: MenuItemSpec[] = []
-  if (!readOnly) {
+  if (!readOnly && onRename !== undefined) {
     items.push({ id: 'rename', label: t('contacts.books.rename.action'), onSelect: onRename })
   }
   // The default book is excluded on purpose: an account must keep one, the server will refuse to
   // destroy it, and an offer that can only fail is worse than no offer.
-  if (book.myRights.mayDelete !== false && !book.isDefault) {
+  if (onDelete !== undefined && book.myRights.mayDelete !== false && !book.isDefault) {
     items.push({
       id: 'delete',
       label: t('contacts.books.delete.action'),
@@ -302,7 +492,7 @@ function AddressBookItem({
   return (
     <li className={styles.bookRow}>
       <Link
-        to={contactsPath(book.id)}
+        to={contactsPath(book.id, undefined, linkAccountId)}
         className={styles.bookItem}
         {...(onSelect ? { onClick: onSelect } : {})}
         {...(selected ? { 'aria-current': 'page' as const } : {})}

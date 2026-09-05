@@ -218,6 +218,16 @@ export function useAddressBooks(): AddressBookRow[] | undefined {
 }
 
 /**
+ * The address books of ONE named account (S-4) — for a rail that lists every account's books beside
+ * the acting account's. The replica is keyed by account (ADR-018), so a delegated account's books
+ * are already synced; this reads them WITHOUT changing the acting account — the `accountId` argument
+ * is the one asked about, not the context's.
+ */
+export function useAddressBooksFor(accountId: Id): AddressBookRow[] | undefined {
+  return useReplicaQuery(({ db }) => addressBooksForAccount(db, accountId), [accountId])
+}
+
+/**
  * Every contact card of the account (individuals AND groups) — the source three unrelated surfaces
  * share: the contacts screen, the mail reading pane's sender card, and each composer's recipient
  * suggestions.

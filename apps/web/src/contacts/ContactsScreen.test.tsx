@@ -2,6 +2,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RouterProvider } from '../app/route'
+import { SessionContext } from '../app/session/context'
+import type { SessionContextValue } from '../app/session/types'
 import {
   canonicalContactQueryKey,
   putAddressBooks,
@@ -374,5 +376,80 @@ describe('the phone header', () => {
 
     const heading = await screen.findByRole('heading', { name: 'All Contacts' })
     expect(screenBar().contains(heading)).toBe(true)
+  })
+})
+
+describe('ContactsScreen — acting in a delegated account (S-4)', () => {
+  /*
+   * A second account `b` whose `contacts` area the server serves, holding a book whose id COLLIDES
+   * with the own account's `personal` — JMAP book ids are per-account and short (ADR-018), so the
+   * screen must scope to `?account=b` or a reload/click would open the OWN same-id book.
+   */
+  const delegatedGroup = {
+    id: 'b',
+    name: 'group@waxwing.test',
+    isPersonal: false,
+    isReadOnly: false,
+    areas: { mail: 'granted', contacts: 'granted', files: 'granted', calendar: 'granted' },
+  } as const
+
+  beforeEach(async () => {
+    await putAddressBooks(db, 'b', [addressBook('personal', { name: 'Group Personal' })])
+    await putContactCards(db, 'b', [contactCard('gc1', { name: { full: 'Group Contact' } })])
+    await putContactQueryCache(db, {
+      accountId: 'b',
+      key: canonicalContactQueryKey({ filter: { inAddressBook: 'personal' } }),
+      ids: ['gc1'],
+      queryState: 'q',
+      total: 1,
+      upToId: 'gc1',
+      filter: { inAddressBook: 'personal' },
+      sort: null,
+      lastUsedAt: 1,
+    })
+  })
+
+  function renderGrouped(path: string) {
+    window.history.pushState(null, '', path)
+    const value = {
+      connected: {
+        client: { call: async () => ({ get: () => ({ list: [] }) }) },
+        accountId: 'a',
+        accounts: [delegatedGroup],
+        delegated: [delegatedGroup],
+        jmapSession: {
+          accounts: { a: { accountCapabilities: {} }, b: { accountCapabilities: {} } },
+        },
+      },
+    } as unknown as SessionContextValue
+    return render(
+      <SessionContext.Provider value={value}>
+        <RouterProvider>
+          <ReplicaProvider accountId="a" db={db}>
+            <ContactsScreen />
+          </ReplicaProvider>
+        </RouterProvider>
+      </SessionContext.Provider>,
+    )
+  }
+
+  it('opens a delegated book in ITS account, not the same-id own book (ADR-018)', async () => {
+    const user = userEvent.setup()
+    renderGrouped('/contacts')
+    // The delegated section's row (its accessible name carries the isDefault badge). Its books
+    // resolve from the replica async — generous budget, see the rail tests.
+    const groupLink = await screen.findByRole(
+      'link',
+      { name: /Group Personal/ },
+      { timeout: 5_000 },
+    )
+    expect(groupLink.getAttribute('href')).toContain('?account=b')
+    await user.click(groupLink)
+    // The route now names the account, so a reload stays in the group.
+    expect(window.location.pathname).toBe('/contacts/personal')
+    expect(window.location.search).toContain('account=b')
+    // The list shows the GROUP's card — the own account's same-id book would show Alice instead.
+    expect(await screen.findByRole('option', { name: 'Group Contact' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Alice Anderson' })).not.toBeInTheDocument()
   })
 })

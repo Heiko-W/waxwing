@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { notificationTargetPath } from '../../notify/click-route'
 import { carryAccount } from './RouterProvider'
 import {
+  ACCOUNT_PARAM,
   atMailRoot,
   CONTACTS_ALL_BOOKS,
   CONTACTS_PATH,
+  calendarPath,
   contactsPath,
   deriveBase,
   isReadingHistoryEntry,
@@ -175,6 +177,27 @@ describe('path builders', () => {
     expect(contactsPath('book1', 'c42')).toBe('/contacts/book1/c42')
   })
 
+  it('qualifies a contacts route when a delegated account is named (S-4)', () => {
+    // The same collision ADR-018 documents for mailboxes: book ids are per-account and short, so a
+    // delegated book's link must name its account or a reload resolves against the user's own —
+    // where the same id very likely names a real, different book.
+    expect(contactsPath('book1', undefined, 'acctS')).toBe('/contacts/book1?account=acctS')
+    expect(contactsPath('book1', 'c42', 'acctS')).toBe('/contacts/book1/c42?account=acctS')
+    expect(contactsPath(undefined, 'c42', 'acctS')).toBe(
+      `/contacts/${CONTACTS_ALL_BOOKS}/c42?account=acctS`,
+    )
+  })
+
+  it('reads the account qualifier back off the route (S-4)', () => {
+    // `loc` takes pathname and search separately — the query must never become part of the path,
+    // or `matchRoute` would read the account into `cardId`.
+    const match = matchRoute('', loc('/contacts/book1/c42', '?account=acctS'))
+    expect(match.id).toBe('contacts')
+    expect(match.params.bookId).toBe('book1')
+    expect(match.params.cardId).toBe('c42')
+    expect(match.search.get(ACCOUNT_PARAM)).toBe('acctS')
+  })
+
   it('addresses a card in the all-books scope rather than dropping it', () => {
     // The regression this pins: `contactsPath(undefined, 'c42')` used to return `/contacts`, so
     // every row in "All Contacts" navigated to the page it was already on and nothing opened.
@@ -303,5 +326,19 @@ describe('the full-screen flag', () => {
     expect(mailHrefKeepingQuery(search, 'inbox')).toBe('/mail/inbox?q=hi&account=acctB')
     // …and the caller's own params are not mutated on the way.
     expect(search.get('full')).toBe('1')
+  })
+})
+
+describe('calendarPath — account qualification (S-4b)', () => {
+  it('omits the account when none is named, keeps the date', () => {
+    expect(calendarPath()).toBe('/calendar')
+    expect(calendarPath('2026-08-20')).toBe('/calendar/2026-08-20')
+  })
+
+  it('qualifies the route when a delegated account is named', () => {
+    // A group calendar opened from the rail or a share card must survive a reload in that account —
+    // the same ADR-018 collision the mail and contacts routes already guard against.
+    expect(calendarPath(undefined, 'acctS')).toBe('/calendar?account=acctS')
+    expect(calendarPath('2026-08-20', 'acctS')).toBe('/calendar/2026-08-20?account=acctS')
   })
 })
