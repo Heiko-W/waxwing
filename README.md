@@ -69,7 +69,7 @@ you can check what you are upgrading to:
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing                       # arrived intact
 gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
-  --source-ref refs/tags/v0.22.0                               # built here, from THAT TAG
+  --source-ref refs/tags/v0.23.0                               # built here, from THAT TAG
 ```
 
 `--ignore-missing` because `SHA256SUMS` lists all three artefacts and you downloaded one;
@@ -93,7 +93,8 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 - **Filters** — server-side rules over JMAP for Sieve (RFC 9661), so they keep sorting your mail
   while the app is closed. A script you already had is preserved untouched, never rewritten
 - **Live** — push over EventSource (SSE), system notifications via Web Push
-- **Offline** — a local replica, an outbox that survives a reload and a reconnect, installable as a PWA
+- **Offline** — opened without a network, the installed app opens your mailbox, not a sign-in form:
+  a local replica and an outbox that survive a reload, a reconnect and a cold start
 - **Private** — remote content blocked by default, message bodies rendered in a script-free
   sandboxed frame, zero telemetry
 - **Yours** — minimalist design, dark/light, white-label through `config.json` + `theme.css`
@@ -104,15 +105,54 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.22.0 — feature-complete, and deliberately not 1.0 yet.**
+**v0.23.0 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: 5 304 unit tests, 20
+Every planned work package is done and the release gate is signed off: 5 932 unit tests, 20
 integration tests against a live Stalwart, and 249 end-to-end tests across the **seven** Playwright
 suites the gate runs. The seventh is WebKit, which used to run beside the gate rather than in it —
 see below. Performance and accessibility are measured rather than asserted — the numbers are in the
 [implementation plan](docs/implementation-plan.md).
 
-**v0.22.0 is a security and implementation review, worked to the end.** Forty findings from a
+**v0.23.0 is the September code review, worked to the end — and the two Musts it left open.**
+112 findings from a review in eight dimensions, each one adversarially re-checked before it was
+believed, each fix pinned by a regression test that goes red when the fix is removed. The full
+list is in [`docs/reviews/2026-09-01-code-review.md`](docs/reviews/2026-09-01-code-review.md).
+Five of its own recommendations were disproved while implementing them and solved another way;
+the reasoning is at each finding.
+
+Two of the findings were Musts the plan had parked, and both are now built:
+
+- **Opened offline, the app opens your mailbox.** An installed PWA opened without a network used
+  to boot its shell out of the precache and then land on the SIGN-IN FORM reading "Could not
+  reach the server" — with a fully populated replica behind it and no way to reach it, because
+  the JMAP session document was held in memory and fetched from the network at every start. It
+  now lives beside the credentials in the encrypted store, and the e2e tripwire that had pinned
+  the defect since M3.5 is the cold-start test it always asked for
+  ([ADR-041](docs/adr/041-the-session-document-lives-with-the-credentials.md)).
+- **"Select all" reaches the folder, not just the window.** In a folder of 300 it selected 50.
+  The bar now offers a second step that pages the rest out of `Email/query`, and the selection is
+  a snapshot rather than a subscription — so "300 selected" means the same thing when you press
+  Delete as it did when you selected
+  ([ADR-042](docs/adr/042-select-all-pins-the-ids-it-found.md)). Undo carries the full set.
+
+The defects worth naming are the ones nobody had filed: a draft **lost its Bcc recipients** on
+open-and-close, **blank lines were dropped from sent mail** in both composer modes, a signature
+change was silently discarded in plain-text mode, a delivered message could be reported as "send
+interrupted", and two buttons looked usable while refusing every click — `aria-disabled` with no
+visual half, one of them since M1.4. That last one was found by looking at the built app on a
+phone and a tablet with the network actually off; 5 900 green tests could not see it.
+
+Importing 500 contacts takes 450 ms instead of 15.4 s.
+
+One more finding came out of the release gate itself, and it is the kind worth publishing:
+**the focus sweep had never walked a whole tab order.** It started each walk with
+`document.body.focus()`, which in Chromium moves nothing — so it began wherever the last click
+had left focus and covered 11 stops of 24 on the list, 5 of 28 on the reading pane, 5 of 37 in
+the composer. The WCAG 2.4.7 and 1.4.11 verdicts this project has been reporting were measured
+over a fraction of each screen. The walk is anchored now, asserts where it started, and is green
+across every stop ([ADR-045](docs/adr/045-a-tab-walk-has-to-be-anchored.md)).
+
+**v0.22.0 was a security and implementation review, worked to the end.** Forty findings from a
 review in seven dimensions — each one adversarially re-checked before it was believed, and each fix
 pinned by a regression test that goes red when the fix is removed. The full list, with what was
 found and what was decided, is in
