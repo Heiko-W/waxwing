@@ -39,6 +39,10 @@ const CREDENTIALS = { user: 'alice@waxwing.test', pass: 'waxwing-e2e-Pw1!' }
  */
 const CAROL_LABEL = 'carol@waxwing.test'
 
+/** A day inside the month the calendar opens on, so a grid assertion needs no date navigation. */
+const SHARED_EVENT_DAY = '2026-09-02'
+const SHARED_EVENT_TITLE = 'Carols shared meeting'
+
 async function login(page: Page, options: { stay?: boolean } = {}): Promise<void> {
   await page.goto('/')
   await revealPasswordForm(page)
@@ -439,15 +443,17 @@ test.describe('S-4 — a grantee sees the shared account in the rails', () => {
     page,
   }) => {
     /*
-     * The contacts rail groups books by account (S-4a): with carol's book shared in, alice's rail
+     * The contacts rail groups books by account (S-4): with carol's book shared in, alice's rail
      * grows a section labelled with carol's account — the same iCloud pattern the folder rail uses,
      * and the standing door a group membership gets with no card at all.
      *
-     * The SECTION is the S-4a claim this test pins; the books INSIDE it arrive when the delegated
-     * account's sync engine pulls its contacts, which only runs for a mail-capable account. Carol
-     * shares only an address book here (no mail), so the books may lag a sweep behind the section —
-     * the click-through into her account is covered by the unit suite (where the replica is seeded)
-     * and by the calendar half of this file, which shares the same `?account=` mechanism.
+     * **The BOOK is the assertion, not the section**, and that distinction is the whole point of
+     * this test. An earlier version pinned only the section and explained the empty list as a lag:
+     * it was not a lag. Carol shares an address book and no mail, so her account got no sync engine
+     * and no replica rows — the section rendered in under a second and still said "No address
+     * books." thirty seconds later, while `AddressBook/get` was returning the book to the same
+     * session. A test that asserts the container while the contents are structurally unreachable
+     * reports coverage it does not have. See ADR-046.
      */
     await clearShareNotifications('alice')
     await shareAddressBook('carol', 'alice', 'viewer')
@@ -458,6 +464,41 @@ test.describe('S-4 — a grantee sees the shared account in the rails', () => {
       .getByRole('navigation', { name: 'Address books' })
       .getByRole('region', { name: CAROL_LABEL })
     await expect(section).toBeVisible({ timeout: SYNC_BUDGET_MS })
+    // Her actual book, from the replica an engine now fills for a mail-less shared account.
+    await expect(section.getByRole('link')).not.toHaveCount(0, { timeout: SYNC_BUDGET_MS })
+    await expect(section.getByText('No address books.')).toHaveCount(0)
+  })
+
+  test('a calendar shared with no mail still shows its EVENTS, not an empty month', async ({
+    page,
+  }) => {
+    /*
+     * The calendar half of the same defect, and the more deceptive of the two: the calendar LIST
+     * arrives over the live client, so carol's calendar appeared in the rail under its own name
+     * while the grid behind it stayed on the spinner — the events come from the replica (K-8) and
+     * no engine was filling it for an account that shares no mail. A reader would have concluded
+     * her diary was empty.
+     *
+     * The EVENT is therefore the assertion. It is also what makes the offline promise real: a month
+     * that reached the replica is a month the next visit draws with the network off. See ADR-046.
+     */
+    await clearCalendarEvents()
+    // Inside the month the calendar opens on, so the grid shows it with no date navigation.
+    await addBusyEvent('carol', {
+      start: `${SHARED_EVENT_DAY}T10:00:00`,
+      duration: 'PT2H',
+      title: SHARED_EVENT_TITLE,
+    })
+    await clearShareNotifications('alice')
+    await shareCalendar('carol', 'alice', 'viewer')
+    await login(page)
+    await openCalendar(page)
+
+    await calendarRail(page).getByRole('link', { name: CAROL_LABEL }).click()
+    await expect(page).toHaveURL(/\/calendar.*account=/)
+    await expect(page.getByText(SHARED_EVENT_TITLE).first()).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
   })
 })
 
