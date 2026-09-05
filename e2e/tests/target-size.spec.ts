@@ -224,7 +224,17 @@ test.describe('M4.7 target size (SC 2.5.8, Level AA)', () => {
   test('the reading pane and its action bar meet 24 px', async ({ page }) => {
     await login(page)
     await messageList(page).getByText(READ_SUBJECTS.plain).click()
-    await expect(page.getByRole('button', { name: 'Reply', exact: true })).toBeVisible({
+    /*
+     * ENABLED, not merely visible — the same precondition `focus-visible.spec.ts` needs, for the
+     * same reason and with a sharper consequence here.
+     *
+     * `targets()` skips anything carrying `disabled`, and Reply / Reply all / Forward carry it
+     * until `bodyReady` flips. Measured on the hosted runner: EVERY recorded run of this test —
+     * green ones included — reported the reading action bar as "Details, Move to Trash, More
+     * actions". Three of the five controls this test names in its own title were never measured,
+     * and the test said so in its log for weeks without anybody having to look.
+     */
+    await expect(page.getByRole('button', { name: 'Reply', exact: true })).toBeEnabled({
       timeout: SYNC_BUDGET_MS,
     })
     const found = await targets(page)

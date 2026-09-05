@@ -71,6 +71,7 @@ Format: lightweight [MADR](https://adr.github.io/madr/), one page maximum.
 | [042](042-select-all-pins-the-ids-it-found.md) | "Select all 300" pins the 300 ids it found; it does not follow the query | accepted |
 | [043](043-a-selection-has-an-upper-bound.md) | A selection has an upper bound, and past it the app says so instead of trying | accepted |
 | [044](044-numbers-are-formatted-by-the-interpolator.md) | A number in a sentence is formatted by the interpolator, not by the caller | accepted |
+| [045](045-a-tab-walk-has-to-be-anchored.md) | A Tab walk has to be anchored, because `document.body.focus()` moves nothing | accepted |
 
 Regenerate this table after adding an ADR — it is written by hand, and a missing row is the
 kind of omission nobody notices.
