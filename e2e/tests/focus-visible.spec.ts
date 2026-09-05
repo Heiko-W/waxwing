@@ -103,23 +103,74 @@ async function login(page: Page): Promise<void> {
 /**
  * Walk the Tab order, recording each stop's focused and unfocused appearance.
  *
- * The unfocused reading is taken by moving focus to `document.body` and reading the SAME element
- * again, rather than by reading a different element or a cached value: `:focus-visible` is the only
- * thing that may differ between the two readings.
+ * The unfocused reading is taken by moving focus away and reading the SAME element again, rather
+ * than by reading a different element or a cached value: `:focus-visible` is the only thing that
+ * may differ between the two readings.
  *
  * Keyboard Tab, not `element.focus()`. That is the whole point of `:focus-visible` — a scripted
  * focus does not necessarily match it, and a sweep built on `.focus()` would report rings that a
  * keyboard user never sees, or miss the ones they do.
+ *
+ * ## Where the walk starts, and why it is a `tabindex`
+ *
+ * `document.body.focus()` used to stand for "go back to the top and Tab from there", and in
+ * Chromium it is a NO-OP: `<body>` is not a focusable area, so `focus()` returns without touching
+ * anything and `document.activeElement` stays on whatever the test last clicked. Measured — the
+ * expression `(document.body.focus(), document.activeElement === document.body)` is `false`.
+ *
+ * So every sweep began wherever the previous interaction had left focus and ran to the END of the
+ * document. The header, the account menu, the main navigation and the folder tree were never
+ * measured on any screen whose test had already clicked past them: `list` recorded 11 stops where
+ * the order has 24, and `reading` recorded 5 where it has 28. The MAX_TAB_STOPS ceiling never came
+ * near being the limit — the walk was simply starting three quarters of the way down.
+ *
+ * It was also ORDER-DEPENDENT, which is how it finally failed rather than merely under-measuring.
+ * Chromium's *sequential focus navigation starting point* is not the same thing as
+ * `document.activeElement`, and re-renders the test does not control reset it: with the settings
+ * panel focused by `SettingsPage`'s "focus follows the navigation" effect, the first Tab went to
+ * the top of the document on an idle machine and stayed inside the panel on a loaded one. Same
+ * code, opposite starting points — verified by driving the identical test at
+ * `Emulation.setCPUThrottlingRate: 8`, which reproduces the CI failure every time.
+ *
+ * A `tabindex` makes `<body>` a focusable area, and then the same `focus()` does what this line
+ * always claimed to do: the walk starts above the first control on every screen, on any machine.
+ * It is removed again afterwards — a stray `tabindex` on `<body>` is exactly the sort of thing the
+ * next assertion in this repo would trip over.
+ *
+ * ## Where the walk stops
+ *
+ * At the end of the document (Tab past the last control leaves `document.activeElement` on the
+ * body), or at a genuine cycle. A cycle used to be "a name we have already seen", which is not the
+ * same thing: six checkboxes all called "Select message" is an ordinary message list, not a wrap,
+ * and keying on the name would end the sweep at the second row. Element IDENTITY is the question
+ * being asked, so a `WeakSet` in the page answers it.
  */
 async function tabStops(page: Page, max = MAX_TAB_STOPS): Promise<Stop[]> {
+  await page.evaluate(() => {
+    document.body.tabIndex = -1
+    document.body.focus()
+    ;(window as unknown as { __focusSweepSeen?: WeakSet<Element> }).__focusSweepSeen =
+      new WeakSet<Element>()
+  })
+  try {
+    return await collectStops(page, max)
+  } finally {
+    await page.evaluate(() => document.body.removeAttribute('tabindex'))
+  }
+}
+
+/** The loop itself, split out so `tabStops` can guarantee the `tabindex` comes off again. */
+async function collectStops(page: Page, max: number): Promise<Stop[]> {
   const stops: Stop[] = []
-  const seen = new Set<string>()
-  await page.evaluate(() => document.body.focus())
   for (let i = 0; i < max; i++) {
     await page.keyboard.press('Tab')
     const stop = await page.evaluate(() => {
       const element = document.activeElement
       if (!(element instanceof HTMLElement) || element === document.body) return null
+      // Identity, not name — see the note on this function for what keying on the name cost.
+      const visited = (window as unknown as { __focusSweepSeen: WeakSet<Element> }).__focusSweepSeen
+      const wrapped = visited.has(element)
+      visited.add(element)
 
       const read = (): {
         outlineStyle: string
@@ -164,8 +215,6 @@ async function tabStops(page: Page, max = MAX_TAB_STOPS): Promise<Stop[]> {
         element.tagName
       const tag = element.tagName.toLowerCase()
 
-      // Take the focus away and read the same element again. `blur()` alone would leave
-      // `:focus-visible` matching in some engines; moving focus to the body is unambiguous.
       /*
        * Take the focus away — by MOVING it to another real control, not by `blur()` plus a body
        * focus.
@@ -176,21 +225,31 @@ async function tabStops(page: Page, max = MAX_TAB_STOPS): Promise<Stop[]> {
        * `document.body.focus()` fires no `focusin`, so the ring stayed on and the frame's
        * "unfocused" reading was identical to its focused one — the element looked like it had a
        * permanent border rather than an indicator. Parking on a control is what a Tab does anyway.
+       *
+       * ANOTHER control, found by search rather than by taking the first one. The first `a[href]`
+       * in this app is "Skip to content" — now the first stop of every walk — so on that one stop
+       * `querySelector` handed back the element under test itself and the `else` branch had to
+       * carry it. That branch happens to work now, because the body is a focusable area for the
+       * length of the walk; it did not before, and relying on it would put the sweep's correctness
+       * on the same footing the bug above was on. Measured: reverting this line alone leaves the
+       * file green, which is why it is written down as defence and not as a fix.
        */
-      const park = document.querySelector<HTMLElement>('a[href], button')
+      const park =
+        [...document.querySelectorAll<HTMLElement>('a[href], button')].find(
+          (candidate) => candidate !== element,
+        ) ?? null
       element.blur()
-      if (park !== null && park !== element) park.focus()
+      if (park !== null) park.focus()
       else document.body.focus()
       const blurred = read()
       // Give it back, so the next Tab continues from here rather than from the top.
       element.focus()
-      return { name: name === '' ? tag : name, tag, focused, blurred, behind, own }
+      return { name: name === '' ? tag : name, tag, focused, blurred, behind, own, wrapped }
     })
-    if (stop === null) break
-    const key = `${stop.tag}:${stop.name}`
-    if (seen.has(key)) break // the order has wrapped
-    seen.add(key)
-    stops.push(stop)
+    if (stop === null) break // past the last control — the end of the order
+    const { wrapped, ...appearance } = stop
+    if (wrapped) break // back on a control already walked — the order has wrapped
+    stops.push(appearance)
   }
   return stops
 }
@@ -306,10 +365,30 @@ function recordExemptions(stops: readonly Stop[]): void {
 }
 
 /**
+ * The control a reader's very first Tab reaches, on every screen this app has.
+ *
+ * The `mustReach` guard below says the walk got FAR enough. Nothing said it started in the right
+ * place, and for as long as nothing did, it did not: `document.body.focus()` is a no-op in
+ * Chromium, so each sweep began at whatever the test had last clicked and the whole top of the
+ * document — header, account menu, main navigation, folder tree — went unmeasured on every screen.
+ * The sweeps still passed, and their stop counts drifted between 10 and 12 from run to run, which
+ * is what a silently truncated walk looks like from the outside.
+ *
+ * By NAME rather than by count, for the reason `mustReach` is: a count cannot tell "the walk did
+ * not start at the top" from "this build has one control fewer". The skip link is the first thing
+ * in the document by construction — it is the one control whose entire purpose is to be first.
+ */
+const FIRST_STOP = 'Skip to content'
+
+/**
  * @param mustReach - a control this screen certainly has, by accessible name.
  */
 async function sweep(page: Page, screen: string, mustReach: string): Promise<void> {
   const stops = await tabStops(page)
+  expect(
+    stops[0]?.name,
+    `the Tab walk on ${screen} did not start at the top of the document — it began at "${stops[0]?.name}", so everything above that was never measured`,
+  ).toBe(FIRST_STOP)
   /*
    * B22's lesson, and the one that matters most in a sweep: a Tab walk that finds nothing makes
    * every assertion below vacuously true.
@@ -349,7 +428,21 @@ test.describe('B6 focus is visible, and visible enough', () => {
   test('the reading pane and its action bar', async ({ page }) => {
     await login(page)
     await messageList(page).getByText(READ_SUBJECTS.plain).click()
-    await expect(page.getByRole('button', { name: 'Reply', exact: true })).toBeVisible({
+    /*
+     * ENABLED, not merely visible.
+     *
+     * Reply, Reply all and Forward gate on `bodyReady` (`!loading && ready`, MessageView) and carry
+     * the native `disabled` attribute until the body — and its inline images — have arrived. A
+     * natively disabled button is not a tab stop, and `useToolbarRoving` deliberately skips it
+     * (`button:not(:disabled)`), so in that window the action bar's single tab stop is "Move to
+     * Trash" and no Tab walk on earth reaches "Reply". `toBeVisible` is true throughout it, which
+     * is why this read as a mystery: the assertion the sweep makes about the screen was being
+     * evaluated against a screen that was still loading.
+     *
+     * Waiting for the gate the product actually sets is the precondition; it is not a softer
+     * assertion, it is the same assertion made once the screen exists.
+     */
+    await expect(page.getByRole('button', { name: 'Reply', exact: true })).toBeEnabled({
       timeout: SYNC_BUDGET_MS,
     })
     await sweep(page, 'reading', 'Reply')
