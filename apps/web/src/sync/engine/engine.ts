@@ -73,7 +73,7 @@ import {
 } from './backfill'
 import { backoffDelayMs, clampRetryAfter, STUCK_AFTER_ATTEMPTS } from './backoff'
 import { type BroadcastChannelLike, defaultBroadcast, EngineBus } from './bus'
-import { isAuthExpiry } from './conflict'
+import { isAuthExpiry, thrownErrorType } from './conflict'
 import {
   type CalendarQuerySpecInput,
   type ContactQuerySpecInput,
@@ -1914,8 +1914,34 @@ export class SyncEngine {
        */
       await reapplyPendingMailboxes(this.db, this.accountId)
       if (!this.identitiesSynced) {
-        await syncIdentities(this.port, this.db, this.accountId, this.clock)
-        this.identitiesSynced = true // only after success, so an offline first pass retries
+        /*
+         * ISOLATED, for the same class of reason as the calendar leg below — and this one was
+         * measured, not anticipated.
+         *
+         * A DELEGATED mailbox has no identities the reader may send from: Stalwart answers
+         * `Identity/get` on a shared account with `forbidden` (measured 2026-09-05 against the
+         * fixture, with carol's inbox shared to alice read-only), which is consistent with ADR-020
+         * — send-as from a delegated account is not offered because the server refuses it.
+         *
+         * Unguarded, that refusal threw out of the delta block from INSIDE the mail leg, so every
+         * pass for such an account ended at `phase: 'error'` before reaching the contacts, calendar
+         * and files legs — which is why a shared account's address books never appeared even when
+         * `AddressBook/get` was returning them to the same session, and why the S-4 rails looked
+         * like a UI bug. The account's mail still synced (the legs above this one had already run),
+         * so nothing about the failure pointed here.
+         *
+         * A refusal is permanent, so it counts as done: retrying it every sweep would be one
+         * pointless round-trip per shared account for ever. Any OTHER failure leaves the flag
+         * alone, so an offline or transient first pass still retries.
+         */
+        try {
+          await syncIdentities(this.port, this.db, this.accountId, this.clock)
+          this.identitiesSynced = true // only after success, so an offline first pass retries
+        } catch (error) {
+          if (isAuthExpiry(error)) throw error
+          if (thrownErrorType(error) !== 'forbidden') throw error
+          this.identitiesSynced = true
+        }
       }
       await this.ensureInboxWindow()
       await syncThreads(this.port, this.db, this.accountId, this.clock)
