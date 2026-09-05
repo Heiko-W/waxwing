@@ -246,6 +246,17 @@ export interface SyncEngineDeps {
   readonly isForeground?: () => boolean
   /** How long to wait for another tab to answer the foreground probe; defaults to {@link FOREGROUND_ACK_MS}. */
   readonly foregroundAckMs?: number
+  /**
+   * Does this account serve MAIL (S-4)? Defaults to `true` — every engine before S-4 was a mail
+   * engine, and the primary and each delegated MAIL account still are.
+   *
+   * `false` for a delegated account that shares only its contacts or its calendar. Such an account
+   * answers `Mailbox/get` with `forbidden`, and the mail legs are the FIRST thing
+   * {@link runDeltaBlock} does — so an unguarded pass throws before the contacts leg, every pass,
+   * for ever. That is not a hypothetical: it is why the S-4 rails drew an account section that said
+   * "No address books." while `AddressBook/get` was returning the book to the very same session.
+   */
+  readonly syncMail?: boolean
 }
 
 const DEFAULT_SAFETY_INTERVAL_MS = 60_000
@@ -405,6 +416,11 @@ export class SyncEngine {
    * that fails BEFORE the mail delta — offline, an expired session, a throttled first request —
    * caught up on nothing and leaves the exemption where it found it.
    */
+  /** Does this account serve mail? See {@link SyncEngineDeps.syncMail} — default true. */
+  private get syncsMail(): boolean {
+    return this.deps.syncMail !== false
+  }
+
   private mailDeltaRan = false
   /**
    * Stamped when leadership is acquired; mail not strictly newer than this is never notified.
@@ -1863,38 +1879,52 @@ export class SyncEngine {
      * So the concurrency is not wrong, it is blocked: it needs that gap closed first. Restoring it
      * before then trades a real correctness race for ~150 ms, which is a bad trade in a mail client.
      */
-    const mailboxWrites = await syncMailboxes(this.port, this.db, this.accountId, this.clock)
-    // The folder badges an unsent intent has already moved (M3.10, gap B7). `syncMailboxes`
-    // writes the server's ABSOLUTE count, and it runs BEFORE the replay in `runSyncPass` — so a
-    // mailbox the server reports as changed for an UNRELATED reason (new mail in the Inbox, another
-    // client) silently reverts the optimistic badge to the pre-mutation number, and it stays
-    // reverted until the intent lands. Re-applying is scoped to the count fields this pass actually
-    // wrote and to intents that have provably NEVER BEEN DISPATCHED — which is NOT the same as
-    // `status === 'pending'`, since several paths return an already-dispatched row to `pending`.
-    // See {@link reapplyPendingCounts} and `unsentOutbox`.
-    await reapplyPendingCounts(this.db, this.accountId, mailboxWrites)
     /*
-     * And the folder ROWS (B55). The counts were only half of it: `syncMailboxes` writes the
-     * server's ABSOLUTE list, so a folder created or deleted optimistically while its intent waits
-     * in the outbox is reverted by any pass that reports the mailbox list — the created one
-     * vanishes, the deleted one comes back and STAYS, because the replay that would make the server
-     * agree runs after this block and nothing re-reports the mailbox afterwards.
+     * MAIL — skipped entirely for a contacts/calendar-only delegated account (S-4).
      *
-     * This is the gap the reverted concurrency experiment ran into (see the block above), and
-     * closing it is what that experiment was blocked on.
+     * The guard is here rather than around each call because the whole block is mail: `Mailbox/get`
+     * on such an account answers `forbidden`, and everything below it depends on the mailbox rows
+     * that call writes. Before the guard existed the throw propagated out of the delta block, was
+     * caught in `runSyncPass` as an ordinary `deltaError`, and scheduled a retry that failed the
+     * same way — so the contacts and calendar legs at the bottom of this method were unreachable on
+     * exactly the accounts S-4 added rails for.
+     *
+     * Nothing changes for a mail account: `syncMail` defaults to true.
      */
-    await reapplyPendingMailboxes(this.db, this.accountId)
-    if (!this.identitiesSynced) {
-      await syncIdentities(this.port, this.db, this.accountId, this.clock)
-      this.identitiesSynced = true // only after success, so an offline first pass retries
+    if (this.syncsMail) {
+      const mailboxWrites = await syncMailboxes(this.port, this.db, this.accountId, this.clock)
+      // The folder badges an unsent intent has already moved (M3.10, gap B7). `syncMailboxes`
+      // writes the server's ABSOLUTE count, and it runs BEFORE the replay in `runSyncPass` — so a
+      // mailbox the server reports as changed for an UNRELATED reason (new mail in the Inbox, another
+      // client) silently reverts the optimistic badge to the pre-mutation number, and it stays
+      // reverted until the intent lands. Re-applying is scoped to the count fields this pass actually
+      // wrote and to intents that have provably NEVER BEEN DISPATCHED — which is NOT the same as
+      // `status === 'pending'`, since several paths return an already-dispatched row to `pending`.
+      // See {@link reapplyPendingCounts} and `unsentOutbox`.
+      await reapplyPendingCounts(this.db, this.accountId, mailboxWrites)
+      /*
+       * And the folder ROWS (B55). The counts were only half of it: `syncMailboxes` writes the
+       * server's ABSOLUTE list, so a folder created or deleted optimistically while its intent waits
+       * in the outbox is reverted by any pass that reports the mailbox list — the created one
+       * vanishes, the deleted one comes back and STAYS, because the replay that would make the server
+       * agree runs after this block and nothing re-reports the mailbox afterwards.
+       *
+       * This is the gap the reverted concurrency experiment ran into (see the block above), and
+       * closing it is what that experiment was blocked on.
+       */
+      await reapplyPendingMailboxes(this.db, this.accountId)
+      if (!this.identitiesSynced) {
+        await syncIdentities(this.port, this.db, this.accountId, this.clock)
+        this.identitiesSynced = true // only after success, so an offline first pass retries
+      }
+      await this.ensureInboxWindow()
+      await syncThreads(this.port, this.db, this.accountId, this.clock)
+      created.push(...(await syncEmails(this.port, this.db, this.accountId, this.clock)))
+      // The catch-up has now happened, whatever becomes of the rest of this pass. This is what arms
+      // M3.6's storm guard — not the pass SUCCEEDING, which is a different claim and was the wrong one.
+      this.mailDeltaRan = true
+      await this.reconcileWatched(forceFull)
     }
-    await this.ensureInboxWindow()
-    await syncThreads(this.port, this.db, this.accountId, this.clock)
-    created.push(...(await syncEmails(this.port, this.db, this.accountId, this.clock)))
-    // The catch-up has now happened, whatever becomes of the rest of this pass. This is what arms
-    // M3.6's storm guard — not the pass SUCCEEDING, which is a different claim and was the wrong one.
-    this.mailDeltaRan = true
-    await this.reconcileWatched(forceFull)
     // Contacts (M4.2): the address-book tree (pulled whole) + the ContactCard delta + the watched
     // contact query windows. Independent of mail; the same `forceFull` SP.4 re-probe applies.
     await syncAddressBooks(this.port, this.db, this.accountId, this.clock)
@@ -2340,6 +2370,8 @@ export function createSyncEngine(deps: {
   createBus?: () => BroadcastChannelLike
   createPush?: SyncEngineDeps['createPush']
   publishStatus?: (status: EngineStatus) => void
+  /** S-4: `false` for a contacts/calendar-only account. See {@link SyncEngineDeps.syncMail}. */
+  syncMail?: boolean
 }): SyncEngine {
   const clock: EngineClock = deps.clock ?? {
     now: () => Date.now(),
@@ -2357,6 +2389,7 @@ export function createSyncEngine(deps: {
     locks: navigator.locks as unknown as LockManagerLike,
     createBus: deps.createBus ?? (() => defaultBroadcast()),
     createPush: deps.createPush ?? ((session, options) => createPushChannel(session, options)),
+    syncMail: deps.syncMail ?? true,
     isOnline: () => navigator.onLine,
     onOnlineChange: (listener) => {
       const on = () => listener(true)

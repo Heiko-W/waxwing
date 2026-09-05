@@ -10,7 +10,7 @@ import { createPushChannel } from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import { useConfig } from '../../app/config-context'
 import { effectiveCacheDays } from '../../app/offline-prefs'
-import { secondaryMailAccounts } from '../../app/session/accounts'
+import { delegatedPimAccounts, secondaryMailAccounts } from '../../app/session/accounts'
 import { useSession } from '../../app/session/context'
 import type { ConnectedSession } from '../../app/session/types'
 import { createMailNotifier } from '../../notify/notifier'
@@ -64,24 +64,40 @@ function canRunEngine(): boolean {
 }
 
 /**
- * The mail accounts to run engines for: the user's own PRIMARY first, then every delegated/shared
- * account (M4.4). `[primary]` alone when the server shares nothing — the byte-for-byte single-account
- * case. The primary's display name comes off its own {@link MailAccount} entry, falling back to the
- * login username.
+ * The accounts to run engines for: the user's own PRIMARY first, then every delegated/shared MAIL
+ * account (M4.4), then every delegated account that serves only contacts or a calendar (S-4).
+ * `[primary]` alone when the server shares nothing — the byte-for-byte single-account case. The
+ * primary's display name comes off its own {@link MailAccount} entry, falling back to the login
+ * username.
  *
- * It reads `connected.accounts` VERBATIM, and that is the whole of the S-4 fix on this side: the
- * list is already narrowed to the accounts that answered `Mailbox/get`, so an account shared for its
- * calendar or its address book alone never reaches this function. Exported so that claim can be
- * asserted without a browser (`app/session/delegation.test.ts`).
+ * The mail list is `connected.accounts` VERBATIM — already narrowed to the accounts that answered
+ * `Mailbox/get`. The PIM-only tail is the S-4 completion: those accounts serve no mail, so they
+ * carry `syncMail: false` and their engine skips the mail legs rather than dying on the
+ * `forbidden` that opens them. Without an engine they have no replica rows, and the rails that
+ * S-4 added could only ever draw an empty section — see {@link delegatedPimAccounts}.
+ *
+ * Exported so both claims can be asserted without a browser (`app/session/delegation.test.ts`).
  */
 export function fleetAccounts(connected: ConnectedSession): FleetAccount[] {
   const primary = connected.accounts.find((account) => account.id === connected.accountId)
   return [
-    { id: connected.accountId, name: primary?.name ?? connected.username, isPrimary: true },
+    {
+      id: connected.accountId,
+      name: primary?.name ?? connected.username,
+      isPrimary: true,
+      syncMail: true,
+    },
     ...secondaryMailAccounts(connected).map((account) => ({
       id: account.id,
       name: account.name,
       isPrimary: false,
+      syncMail: true,
+    })),
+    ...delegatedPimAccounts(connected).map((account) => ({
+      id: account.id,
+      name: account.name,
+      isPrimary: false,
+      syncMail: false,
     })),
   ]
 }
@@ -139,6 +155,10 @@ export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode
         auth,
         config: offlineConfig,
         onAuthExpired: reportAuthExpired,
+        // S-4: a contacts/calendar-only account syncs no mail. `Mailbox/get` answers `forbidden`
+        // there, and the mail legs open the delta block — so without this the pass dies before the
+        // contacts leg and the account's rail section stays empty for ever.
+        syncMail: spec.account.syncMail,
         // Only the PRIMARY notifies (M3.6): a background shared account must never raise banners, and
         // this is the one place that has the replica, the account and the branding at once.
         ...(spec.isPrimary

@@ -37,6 +37,28 @@ export function delegatedAccountsFor(
 }
 
 /**
+ * The delegated accounts that serve NO mail but do serve contacts or a calendar (S-4).
+ *
+ * These are the accounts {@link secondaryMailAccounts} deliberately excludes — and excluding them
+ * from the engine fleet is what made the S-4 rails draw a section that could never fill: the whole
+ * client reads its PIM data out of the replica (K-8, M4.2), the replica is written by an engine,
+ * and an account with no engine therefore shows an empty address-book list and a calendar that
+ * spins for ever. Measured against the fixture before this existed: carol shares an address book,
+ * `AddressBook/get` returns it to alice, and alice's rail says "No address books." indefinitely.
+ *
+ * They get an engine with its mail legs switched off ({@link FleetAccount.syncMail}), because
+ * `Mailbox/get` on such an account answers `forbidden` — which fails the whole delta pass before it
+ * reaches the contacts leg, which is the mechanism behind the empty rail.
+ */
+export function delegatedPimAccounts(connected: ConnectedSession): readonly DelegatedAccount[] {
+  return connected.delegated.filter(
+    (account) =>
+      account.areas.mail === 'denied' &&
+      (account.areas.contacts !== 'denied' || account.areas.calendar !== 'denied'),
+  )
+}
+
+/**
  * Turn the session's ADVERTISED shared accounts plus the probe's verdicts into the two lists a
  * {@link ConnectedSession} carries: `accounts` (own + the ones with mail) and `delegated` (all of
  * them, each stamped with what it will serve).
