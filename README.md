@@ -69,7 +69,7 @@ you can check what you are upgrading to:
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing                       # arrived intact
 gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
-  --source-ref refs/tags/v0.23.0                               # built here, from THAT TAG
+  --source-ref refs/tags/v0.24.0                               # built here, from THAT TAG
 ```
 
 `--ignore-missing` because `SHA256SUMS` lists all three artefacts and you downloaded one;
@@ -105,15 +105,32 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.23.0 — feature-complete, and deliberately not 1.0 yet.**
+**v0.24.0 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: 5 932 unit tests, 20
-integration tests against a live Stalwart, and 249 end-to-end tests across the **seven** Playwright
+Every planned work package is done and the release gate is signed off: 5 952 unit tests, 20
+integration tests against a live Stalwart, and 255 end-to-end tests across the **seven** Playwright
 suites the gate runs. The seventh is WebKit, which used to run beside the gate rather than in it —
 see below. Performance and accessibility are measured rather than asserted — the numbers are in the
 [implementation plan](docs/implementation-plan.md).
 
-**v0.23.0 is the September code review, worked to the end — and the two Musts it left open.**
+**v0.24.0 opens what other people have shared with you — and fixes the reason it could not work.**
+A shared calendar or address book has appeared in the session since S-1 and been unreachable in the
+client ever since. It now has a place: the contacts rail groups books by account, the calendar rail
+gains an account entry, and a delegated book opens in ITS account rather than in the same-id book in
+your own — JMAP ids are per-account and short, so that collision is real
+([ADR-018](docs/adr/018-engine-selection-is-keyed-by-account.md)). The rails came from a contributed
+pull request ([#68](https://github.com/Heiko-W/waxwing/pull/68)).
+
+They drew nothing, and the reasons were underneath them. The client reads its contacts and calendar
+out of the replica, only a sync engine writes there, and only a MAIL account got an engine — so an
+account that shares an address book and no mailbox had no rows to draw, indefinitely, while
+`AddressBook/get` was returning the book to the same session. Chasing that turned up an older defect
+that is not about sharing at all: **`Identity/get` is refused on every delegated account, and that
+refusal was killing the whole sync pass**. Every shared mailbox has silently not synced its
+contacts, calendar and files since the engine fleet existed — its mail worked, which is why nobody
+noticed ([ADR-046](docs/adr/046-a-shared-account-syncs-what-it-serves-not-what-it-advertises.md)).
+
+**v0.23.0 was the September code review, worked to the end — and the two Musts it left open.**
 112 findings from a review in eight dimensions, each one adversarially re-checked before it was
 believed, each fix pinned by a regression test that goes red when the fix is removed. The full
 list is in [`docs/reviews/2026-09-01-code-review.md`](docs/reviews/2026-09-01-code-review.md).
