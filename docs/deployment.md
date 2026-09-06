@@ -71,7 +71,7 @@ The two fields that do it:
 So a Waxwing release reaches your users without you doing anything. **Omit
 `autoUpdateFrequency` if you would rather not have that** — then Stalwart fetches once and
 holds still until you change `resourceUrl` yourself. Pinning a version is the same idea:
-point `resourceUrl` at `…/download/waxwing-stalwart-v0.24.1.zip` and it stays there.
+point `resourceUrl` at `…/download/waxwing-stalwart-v0.25.0.zip` and it stays there.
 
 Users are not interrupted by an update. The service worker installs the new build in the
 background and Waxwing offers a reload; nobody loses a half-written message.
@@ -98,13 +98,13 @@ Sigstore-signed build-provenance attestation, made by the GitHub runner's own id
 
 ```sh
 gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
-  --source-ref refs/tags/v0.24.1
+  --source-ref refs/tags/v0.25.0
 ```
 
 **Give `--source-ref`, and name the tag you are installing.** Without it the check passes for
 anything this workflow built from *any* ref, branches included — and branch builds exist, because
 the workflow is dispatched as a rehearsal on purpose. With it, a rehearsal artefact is rejected:
-`expected SourceRepositoryRef to be refs/tags/v0.24.1, got refs/heads/main`.
+`expected SourceRepositoryRef to be refs/tags/v0.25.0, got refs/heads/main`.
 
 It then passes only for a file built by this repository's release workflow, from that tag. It starts with v0.10.0 — on the v0.9.0 assets it reports "no attestations found",
 which is the truthful answer and not a tampering signal.
@@ -118,7 +118,7 @@ to run whatever this project publishes next, in your users' browsers, against th
 Pin instead:
 
 ```jsonc
-"resourceUrl": "https://github.com/Heiko-W/waxwing/releases/download/v0.24.1/waxwing-stalwart-v0.24.1.zip"
+"resourceUrl": "https://github.com/Heiko-W/waxwing/releases/download/v0.25.0/waxwing-stalwart-v0.25.0.zip"
 // and omit autoUpdateFrequency entirely
 ```
 
@@ -188,7 +188,7 @@ and headers.
 Unpack **`waxwing-web-vX.Y.Z.tar.gz`** into a document root (it has no leading directory):
 
 ```sh
-mkdir -p /srv/waxwing && tar -xzf waxwing-web-v0.24.1.tar.gz -C /srv/waxwing
+mkdir -p /srv/waxwing && tar -xzf waxwing-web-v0.25.0.tar.gz -C /srv/waxwing
 ```
 
 ### nginx
