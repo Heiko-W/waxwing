@@ -73,6 +73,7 @@ Format: lightweight [MADR](https://adr.github.io/madr/), one page maximum.
 | [044](044-numbers-are-formatted-by-the-interpolator.md) | A number in a sentence is formatted by the interpolator, not by the caller | accepted |
 | [045](045-a-tab-walk-has-to-be-anchored.md) | A Tab walk has to be anchored, because `document.body.focus()` moves nothing | accepted |
 | [046](046-a-shared-account-syncs-what-it-serves-not-what-it-advertises.md) | A shared account syncs what it serves, not what it advertises | accepted |
+| [047](047-the-calendar-merges-accounts-the-rails-do-not.md) | The calendar merges accounts; the other rails do not | accepted |
 
 Regenerate this table after adding an ADR — it is written by hand, and a missing row is the
 kind of omission nobody notices.
