@@ -1931,6 +1931,7 @@
       "durationInvalid": "Vul een duur in tussen 1 en {{max}} minuten.",
       "zoneNote": "Tijden in {{zone}}",
       "calendar": "Agenda",
+      "calendarInAccount": "{{calendar}} ({{account}})",
       "description": "Notities",
       "location": "Locatie",
       "participants": "Deelnemers",

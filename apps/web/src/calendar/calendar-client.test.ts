@@ -705,7 +705,7 @@ describe('a series as this server actually reports one', () => {
     )
     expect(identity.writeId).toBe('b')
     expect(identity.series).toBe(true)
-    const placed = placeEvent(occurrence('2026-08-03T09:00:00', 'eaaaaab'), identity)
+    const placed = placeEvent(occurrence('2026-08-03T09:00:00', 'eaaaaab'), 'a1', identity)
     expect(refuseEdit(placed)).toBeNull()
     expect(needsScope(placed)).toBe(true)
   })
@@ -718,9 +718,9 @@ describe('a series as this server actually reports one', () => {
     expect(identity.writeId).toBeNull()
     // `unresolved` is the honest sentence here: without a write id there is no object to patch,
     // scope or no scope. On a server that sends `baseEventId` — this one does — it never happens.
-    expect(refuseEdit(placeEvent(occurrence('2026-08-10T09:00:00', 'iaaaaab'), identity))).toBe(
-      'unresolved',
-    )
+    expect(
+      refuseEdit(placeEvent(occurrence('2026-08-10T09:00:00', 'iaaaaab'), 'a1', identity)),
+    ).toBe('unresolved')
   })
 })
 
@@ -751,7 +751,7 @@ describe('a series with `baseEventId`, as Stalwart really answers one', () => {
     // Resolving is not permitting, and permitting is not deciding. A write id makes the patch
     // possible; `needsScope` is what stops it silently meaning "all of them".
     const one = instance('2026-09-14T11:00:00', 'eaaaaaf', 'Wochenmeeting (verschoben)')
-    const placed = placeEvent(one, resolveIdentity(one, indexObjects([])))
+    const placed = placeEvent(one, 'a1', resolveIdentity(one, indexObjects([])))
     expect(refuseEdit(placed)).toBeNull()
     expect(needsScope(placed)).toBe(true)
   })
@@ -798,7 +798,7 @@ describe('placeEvent', () => {
   it('defaults to NOT writable', () => {
     // The safe default is the point: a caller who forgets to resolve identity gets an event that
     // cannot be written, not one that writes with a display id.
-    expect(placeEvent(event()).writeId).toBeNull()
+    expect(placeEvent(event(), 'a1').writeId).toBeNull()
   })
 })
 

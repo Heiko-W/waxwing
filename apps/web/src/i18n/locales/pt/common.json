@@ -1957,6 +1957,7 @@
       "durationInvalid": "Insira uma duração entre 1 e {{max}} minutos.",
       "zoneNote": "Horas em {{zone}}",
       "calendar": "Calendário",
+      "calendarInAccount": "{{calendar}} ({{account}})",
       "description": "Notas",
       "location": "Local",
       "participants": "Participantes",

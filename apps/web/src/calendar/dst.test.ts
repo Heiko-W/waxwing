@@ -23,6 +23,9 @@ import { defaultUntil } from './EventDialog'
 import { daysBetween, monthRange, toIsoDate } from './month-grid'
 import { layoutDay, overlapsDay } from './week-grid'
 
+/** Any account: `placeEvent` only carries it through (#79), and nothing here reads it back. */
+const ACCOUNT = 'a1'
+
 const AMBIENT = process.env.TZ
 
 afterAll(() => {
@@ -82,7 +85,7 @@ for (const zone of ZONES) {
     it(
       'places a one-day whole-day event on the spring day and NOT on the day after (R-16)',
       inZone(zone.name, () => {
-        const placed = placeEvent(allDay(`${zone.spring}T00:00:00`, 'P1D'))
+        const placed = placeEvent(allDay(`${zone.spring}T00:00:00`, 'P1D'), ACCOUNT)
         expect(daysBetween(placed.startsAt as number, placed.endsAt as number)).toEqual([
           zone.spring,
         ])
@@ -97,7 +100,7 @@ for (const zone of ZONES) {
     it(
       'gives a whole-day event with no duration exactly its own day (R-16)',
       inZone(zone.name, () => {
-        const placed = placeEvent(allDay(`${zone.spring}T00:00:00`))
+        const placed = placeEvent(allDay(`${zone.spring}T00:00:00`), ACCOUNT)
         expect(daysBetween(placed.startsAt as number, placed.endsAt as number)).toEqual([
           zone.spring,
         ])
@@ -107,7 +110,7 @@ for (const zone of ZONES) {
     it(
       'gives a three-day whole-day event across the spring transition three days (R-16)',
       inZone(zone.name, () => {
-        const placed = placeEvent(allDay(`${zone.spring}T00:00:00`, 'P3D'))
+        const placed = placeEvent(allDay(`${zone.spring}T00:00:00`, 'P3D'), ACCOUNT)
         const keys = daysBetween(placed.startsAt as number, placed.endsAt as number)
         expect(keys).toHaveLength(3)
         expect(keys[0]).toBe(zone.spring)
@@ -118,7 +121,7 @@ for (const zone of ZONES) {
       'draws a 10:00 meeting on the 10:00 line on both transition days (R-17)',
       inZone(zone.name, () => {
         for (const iso of [zone.spring, zone.autumn]) {
-          const placed = placeEvent(timed(`${iso}T10:00:00`, zone.name))
+          const placed = placeEvent(timed(`${iso}T10:00:00`, zone.name), ACCOUNT)
           const slots = layoutDay(
             [
               {
@@ -139,7 +142,7 @@ for (const zone of ZONES) {
       'draws the free/busy band on the same line as the event (R-17)',
       inZone(zone.name, () => {
         for (const iso of [zone.spring, zone.autumn]) {
-          const placed = placeEvent(timed(`${iso}T10:00:00`, zone.name))
+          const placed = placeEvent(timed(`${iso}T10:00:00`, zone.name), ACCOUNT)
           const bands = busyBandsForDay(
             [
               {

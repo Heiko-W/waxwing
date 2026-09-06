@@ -29,7 +29,7 @@
  * alarm, a `byDay` rule, a participant's delegate — is carried through the save untouched.
  */
 
-import type { Calendar, CalendarEvent, ParticipationStatus } from '@waxwing/jmap'
+import type { Calendar, CalendarEvent, Id, ParticipationStatus } from '@waxwing/jmap'
 import { Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { type ReactNode, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -65,12 +65,55 @@ import {
 import { durationToMs, zoneDiffersFromLocal } from './jscalendar-time'
 import { toIsoDate } from './month-grid'
 
+/**
+ * One entry of the calendar picker (#79) — a calendar, and the account it lives in.
+ *
+ * A bare `Calendar[]` cannot express this list any more: the merged screen offers the calendars of
+ * SEVERAL accounts, JMAP ids are per-account and short, and two accounts meet on `c1` routinely
+ * (ADR-018). A picker keyed by `calendar.id` alone would render two `<option value="c1">`, and the
+ * save would go to whichever account the page guessed.
+ */
+export interface CalendarChoice {
+  readonly accountId: Id
+  readonly calendar: Calendar
+  /**
+   * The owning account's name, or `null` for the reader's OWN account.
+   *
+   * `null` rather than the own account's name because the own calendars are the unmarked case: a
+   * reader with no shares must not suddenly see "Work (alice@…)" on every row.
+   */
+  readonly accountName: string | null
+  /**
+   * Whether a save may aim at this calendar. A read-only shared calendar is still LISTED — so the
+   * reader can see it exists and is not selectable — but never selected.
+   */
+  readonly writable: boolean
+}
+
+/**
+ * The `<option>` value for one choice: account and calendar, because neither is unique alone.
+ *
+ * `/` is a safe separator: RFC 8620 restricts an `Id` to `A-Za-z0-9_-`, so no id can contain one
+ * and the two halves can always be told apart again.
+ */
+function choiceKey(choice: CalendarChoice): string {
+  return `${choice.accountId}/${choice.calendar.id}`
+}
+
 export interface EventDialogProps {
   /** The event being edited, or `null` to create one. */
   readonly event: CalendarEvent | null
   /** Pre-selected day for a new event (local). */
   readonly defaultDate: Date
-  readonly calendars: readonly Calendar[]
+  /**
+   * Every calendar this event may be put in (#79).
+   *
+   * While EDITING, the caller passes the calendars of the event's OWN account only: moving an event
+   * between accounts is not a `CalendarEvent/set` at all (it is a copy plus a destroy, with new ids
+   * and no attendee history), so offering it in a picker whose Save cannot honour it would be the
+   * T1 defect in a new place.
+   */
+  readonly calendars: readonly CalendarChoice[]
   readonly busy: boolean
   /**
    * Does saving this event have to ask "this one or all of them"?
@@ -87,7 +130,12 @@ export interface EventDialogProps {
   /** `maxParticipantsPerEvent` from the account capability. */
   readonly maxParticipants?: number
   onCancel: () => void
-  onSubmit: (draft: EventDraft, scope: EditScope, invite: boolean) => void
+  /**
+   * `accountId` is the account of the CHOSEN calendar (#79), and it is a parameter rather than
+   * something the page derives afterwards for the reason above: a draft carrying `calendarId: 'c1'`
+   * says nothing about whose `c1` it is, and the page holds one client per account.
+   */
+  onSubmit: (draft: EventDraft, scope: EditScope, invite: boolean, accountId: Id) => void
   /** Absent while creating. */
   onDestroy?: ((scope: EditScope) => void) | undefined
   /** Answering an invitation — one pointer patch, not a save. Absent when it does not apply. */
@@ -203,21 +251,37 @@ export default function EventDialog(props: EventDialogProps) {
   )
   /** Did the reader touch the participant list? Only then is `participants` in the patch at all. */
   const [participantsTouched, setParticipantsTouched] = useState(false)
-  const [calendar, setCalendar] = useState(
-    () =>
-      Object.keys(existing?.calendarIds ?? {})[0] ??
-      props.calendars.find((entry) => entry.isDefault)?.id ??
-      props.calendars[0]?.id ??
-      '',
-  )
+  /**
+   * WHICH calendar, as an `accountId + id` pair (#79) — see {@link choiceKey}.
+   *
+   * An existing event names its calendar by id alone, so it is looked up in the offered list; the
+   * caller has already narrowed that list to the event's own account, which is what makes the
+   * lookup unambiguous. A NEW event starts on the default calendar of the FIRST account offered,
+   * which the page orders own-account-first — a group's calendar is never the surprise default.
+   */
+  const [calendar, setCalendar] = useState(() => {
+    const existingId = Object.keys(existing?.calendarIds ?? {})[0]
+    const held =
+      existingId === undefined
+        ? undefined
+        : props.calendars.find((entry) => entry.calendar.id === existingId)
+    const fallback =
+      props.calendars.find((entry) => entry.writable && entry.calendar.isDefault) ??
+      props.calendars.find((entry) => entry.writable)
+    const chosen = held ?? fallback
+    return chosen === undefined ? '' : choiceKey(chosen)
+  })
 
-  const canSubmit = title.trim() !== '' && start !== '' && calendar !== ''
+  /** The chosen entry, or `undefined` when the list holds nothing selectable. */
+  const chosenCalendar = props.calendars.find((entry) => choiceKey(entry) === calendar)
+
+  const canSubmit = title.trim() !== '' && start !== '' && chosenCalendar !== undefined
   const self = findSelf(participants, props.ownAddresses ?? [])
   const showRsvp = self !== null && props.mayRsvp === true && props.onRsvp !== undefined
 
   /** Everything the save needs, or `null` when the form is not sendable yet. */
   function buildDraft(): EventDraft | null {
-    if (!canSubmit) return null
+    if (!canSubmit || chosenCalendar === undefined) return null
     const minutes = allDay ? 1 : parseDurationMinutes(duration)
     if (minutes === null) {
       setDurationRejected(true)
@@ -226,7 +290,10 @@ export default function EventDialog(props: EventDialogProps) {
     setDurationRejected(false)
     const organizer = participants.find((row) => row.isOrganizer)
     return {
-      calendarId: calendar,
+      // The bare id, never the scoped key: the account is carried beside the draft, because that is
+      // what the WIRE looks like — `calendarIds: { c1: true }` inside a request already aimed at
+      // one account.
+      calendarId: chosenCalendar.calendar.id,
       title: title.trim(),
       description,
       // `datetime-local` gives `YYYY-MM-DDTHH:mm`; JSCalendar wants seconds too.
@@ -259,12 +326,12 @@ export default function EventDialog(props: EventDialogProps) {
   /** Save pressed: a series asks first, everything else goes straight out. */
   function save(): void {
     const draft = buildDraft()
-    if (draft === null) return
+    if (draft === null || chosenCalendar === undefined) return
     if (props.isSeries === true) {
       setPage('scope-save')
       return
     }
-    props.onSubmit(draft, 'all', invitesGoOut())
+    props.onSubmit(draft, 'all', invitesGoOut(), chosenCalendar.accountId)
   }
 
   /**
@@ -346,7 +413,9 @@ export default function EventDialog(props: EventDialogProps) {
               return
             }
             const draft = buildDraft()
-            if (draft !== null) props.onSubmit(draft, scope, invitesGoOut())
+            if (draft !== null && chosenCalendar !== undefined) {
+              props.onSubmit(draft, scope, invitesGoOut(), chosenCalendar.accountId)
+            }
           }}
         />
       )}
@@ -450,9 +519,28 @@ export default function EventDialog(props: EventDialogProps) {
               value={calendar}
               onChange={(event) => setCalendar(event.target.value)}
             >
+              {/*
+                Every calendar of every account (#79), and each one says whose it is — a group's
+                "Team" beside the reader's own "Team" is otherwise two identical lines, and choosing
+                the wrong one puts a private appointment in front of a department.
+
+                A calendar the reader may not write to is LISTED and DISABLED rather than dropped:
+                dropping it makes the picker disagree with the rail beside it, which reads as the
+                calendar having disappeared. The same rule the rail uses for its ⋯ menu — rights
+                decide what is on the row, not whether the server refuses afterwards.
+              */}
               {props.calendars.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.name}
+                <option
+                  key={choiceKey(entry)}
+                  value={choiceKey(entry)}
+                  disabled={!entry.writable && choiceKey(entry) !== calendar}
+                >
+                  {entry.accountName === null
+                    ? entry.calendar.name
+                    : t('calendar.event.calendarInAccount', {
+                        calendar: entry.calendar.name,
+                        account: entry.accountName,
+                      })}
                 </option>
               ))}
             </Select>

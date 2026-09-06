@@ -33,6 +33,7 @@ import { VisuallyHidden } from '../ui'
 import { type BusyPeriod, busyBandsForDay } from './availability'
 import styles from './calendar.module.css'
 import type { PlacedEvent } from './calendar-client'
+import { chipColor } from './event-color'
 import { isSameDay } from './month-grid'
 import { layoutDay, overlapsDay } from './week-grid'
 
@@ -63,6 +64,8 @@ export interface WeekViewProps {
   onOpen: (placed: PlacedEvent, day: Date) => void
   /** A day header was activated — select that day. */
   onPick: (day: Date) => void
+  /** The colour of an event's calendar, or `null` for one the screen cannot resolve (#79). */
+  readonly colorFor: (placed: PlacedEvent) => string | null
   /**
    * Somebody else's busy periods, merged and sorted (S-6). Empty or absent draws nothing.
    *
@@ -79,6 +82,7 @@ export function WeekView({
   events,
   today,
   focus,
+  colorFor,
   onOpen,
   onPick,
   busy,
@@ -143,9 +147,11 @@ export function WeekView({
                 .filter((placed) => overlapsDay(placed.startsAt as number, placed.endsAt ?? 0, day))
                 .map((placed) => (
                   <button
-                    key={`${placed.event.id}-${placed.startsAt}`}
+                    // The account is in the key (#79): two accounts hold `e17` at the same instant
+                    // routinely, and React would reconcile the two into one chip.
+                    key={`${placed.accountId}-${placed.event.id}-${placed.startsAt}`}
                     type="button"
-                    className={styles.chip}
+                    {...chipColor(styles.chip, colorFor(placed))}
                     onClick={() => onOpen(placed, day)}
                   >
                     {placed.event.title || t('calendar.untitled')}
@@ -220,15 +226,20 @@ export function WeekView({
 
               {slots.map((slot) => (
                 <button
-                  key={`${slot.item.event.id}-${slot.item.startsAt}`}
+                  key={`${slot.item.accountId}-${slot.item.event.id}-${slot.item.startsAt}`}
                   type="button"
-                  className={styles.weekEvent}
+                  className={chipColor(styles.weekEvent, colorFor(slot.item)).className}
                   style={{
                     insetBlockStart: `${(slot.startMinute / 60) * HOUR_PX}px`,
                     blockSize: `${((slot.endMinute - slot.startMinute) / 60) * HOUR_PX}px`,
                     // Overlapping events share the column's width; `week-grid.ts` decides how many.
                     insetInlineStart: `${(slot.column / slot.columns) * 100}%`,
                     inlineSize: `${(1 / slot.columns) * 100}%`,
+                    // The colour rides in the same object as the geometry, because this block is
+                    // positioned inline and cannot take a second `style`.
+                    ...(colorFor(slot.item) === null
+                      ? {}
+                      : { '--calendar-color': colorFor(slot.item) }),
                   }}
                   onClick={() => onOpen(slot.item, day)}
                 >

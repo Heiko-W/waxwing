@@ -133,6 +133,7 @@ const OCCURRENCE = placeEvent(
     baseEventId: 'b',
     duration: 'PT1H',
   } as CalendarEvent,
+  ACC,
   { writeId: 'b', series: true },
 )
 
@@ -200,6 +201,7 @@ describe('updateEvent with scope "occurrence"', () => {
     // pays for a round trip it does not need.
     const single = placeEvent(
       { id: '7', calendarIds: { c1: true }, start: '2026-09-14T09:00:00' } as CalendarEvent,
+      ACC,
       {
         writeId: '7',
         series: false,

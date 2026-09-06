@@ -210,40 +210,49 @@ test.describe('S-2 — sharing a calendar', () => {
     })
   })
 
-  test('the calendar shared WITH alice offers no way to share it on (S-4)', async ({ page }) => {
+  test('the calendar shared WITH alice offers no way to share it on (#79)', async ({ page }) => {
     /*
      * `myRights.mayShare` is `false` on a grantee's copy and `shareWith` is `null` — only the owner
      * ever sees the grant map. The icon must not be drawn: it would open a dialog listing nobody,
      * over something the server will refuse to change.
      *
-     * Since S-4 the shared account is reachable, but NOT as an extra calendar row: alice's own rail
-     * lists her own calendars, and carol's account sits in the rail's account NAV (S-4b) — the same
-     * iCloud pattern the folder rail uses. So the count that must hold is: every calendar CHECKBOX
-     * (each of alice's own) has exactly one share icon, and the nav entry for carol is a plain link
-     * with no checkbox and no share icon.
+     * The shape this is asserted in changed twice. It began as "one more calendar in the rail, no
+     * more icons", which was never measured and was wrong. S-4b made it a count over alice's own
+     * rows, with carol reachable through a nav entry. Since #79 carol's calendars are IN the rail,
+     * in their own section — so a count over the whole rail would now be comparing alice's rows and
+     * carol's against alice's icons alone, and would fail for a correct app.
+     *
+     * Scoped per section instead, which is also the stronger claim: alice's own rows each have an
+     * icon, carol's section has rows and NO icon at all. A leak in either direction fails.
      */
     await shareCalendar('carol', 'alice', 'viewer')
     await login(page)
     await openCalendar(page)
 
     const rail = calendarRail(page)
-    const checkboxes = rail.getByRole('checkbox')
-    const icons = shareCalendarButton(page)
-
+    const carolSection = rail.getByRole('region', { name: CAROL_LABEL })
     /*
-     * Wait for the list to be POPULATED, not merely for the rail to EXIST — this is B59, the flake
-     * this suite carried from the v0.17.0 release onward, and there was never anything wrong with
-     * the app. See the note in the test this replaced: a snapshot count is only safe once the thing
-     * being counted has arrived.
+     * Wait for both halves to be POPULATED, not merely for the rail to EXIST — this is B59, the
+     * flake this suite carried from the v0.17.0 release onward, and there was never anything wrong
+     * with the app. A snapshot count is only safe once the thing being counted has arrived.
      */
-    await expect(checkboxes.first()).toBeVisible({ timeout: SYNC_BUDGET_MS })
-    const owned = await checkboxes.count()
-    expect(owned, 'the rail is empty — this assertion would prove nothing').toBeGreaterThan(0)
-    await expect(icons).toHaveCount(owned)
-    // Carol's account is the rail's account entry — one click away, with nothing to share ON.
-    const carolEntry = rail.getByRole('link', { name: CAROL_LABEL })
-    await expect(carolEntry).toBeVisible({ timeout: SYNC_BUDGET_MS })
-    await expect(carolEntry).not.toHaveAttribute('aria-current')
+    await expect(rail.getByRole('checkbox').first()).toBeVisible({ timeout: SYNC_BUDGET_MS })
+    await expect(carolSection.getByRole('checkbox').first()).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
+
+    // Carol's section: her calendar is there, and there is nothing on it to share.
+    const carolRows = await carolSection.getByRole('checkbox').count()
+    expect(
+      carolRows,
+      'carol’s section is empty — this assertion would prove nothing',
+    ).toBeGreaterThan(0)
+    await expect(carolSection.getByRole('button', { name: /^Share/ })).toHaveCount(0)
+
+    // Alice's own rows: every one of them can be shared on.
+    const all = await rail.getByRole('checkbox').count()
+    const icons = shareCalendarButton(page)
+    await expect(icons).toHaveCount(all - carolRows)
   })
 
   test('the control is a real touch target on a phone', async ({ browser }) => {
@@ -373,13 +382,16 @@ test.describe('S-1 — a calendar and an address-book share are ANNOUNCED', () =
     await expect(strip.getByText(/folder/i)).toHaveCount(0)
   })
 
-  test('Open scopes the calendar screen to the account that shared (S-4b)', async ({ page }) => {
+  test('Open points the calendar screen at the account that shared (#79)', async ({ page }) => {
     /*
-     * S-4b made the card's Open honest: the wrapper scopes the whole screen to the share's account
-     * (`?account=`), so the button lands in the account whose calendar was shared instead of back in
-     * the reader's own. The account is the announcement's `objectAccountId`, which the session lists
-     * by name — and the rail's own account entry (S-4b) is the standing door a group membership
-     * gets, which has no card at all.
+     * What Open means since the merged calendar (#79). It used to SCOPE the whole screen to the
+     * share's account, which was the best that could be done while the grid showed one account at a
+     * time; carol's calendars are already on the grid now, so scoping would have hidden alice's own
+     * in order to show her something she could see anyway.
+     *
+     * So the parameter points rather than switches: the rail's section for carol's account is
+     * marked, and her calendars are switched back on if the reader had them off. Alice's own
+     * calendars stay exactly where they were, which is the half that changed.
      */
     await clearShareNotifications('alice')
     await shareCalendar('carol', 'alice', 'viewer')
@@ -391,18 +403,16 @@ test.describe('S-1 — a calendar and an address-book share are ANNOUNCED', () =
     const open = strip.getByRole('button', { name: 'Open' })
     await expect(open).toBeVisible()
     await open.click()
-    // The route now names carol's account, so a reload stays in her calendars.
+    // The route still names carol's account, so a reload lands in the same place.
     await expect(page).toHaveURL(/\/calendar.*account=/)
-    // And the rail's account nav marks her account as the acting one.
-    await expect(calendarRail(page).getByRole('link', { name: CAROL_LABEL })).toHaveAttribute(
+    // Her section is the one marked — and it is a section, not a link that replaces the rail.
+    await expect(calendarRail(page).getByRole('region', { name: CAROL_LABEL })).toHaveAttribute(
       'aria-current',
-      'page',
+      'true',
       { timeout: SYNC_BUDGET_MS },
     )
-    // Her account's calendars are the ones drawn now — the entry row replaced the own one.
-    await expect(
-      calendarRail(page).getByRole('link', { name: /alice@waxwing.test/ }),
-    ).not.toHaveAttribute('aria-current')
+    // Alice's own calendars are still there beside them: nothing was swapped out.
+    await expect(calendarRail(page).getByRole('checkbox').first()).toBeVisible()
   })
 
   test('“Hide” destroys it, so a reload does not bring it back', async ({ page }) => {
@@ -494,8 +504,13 @@ test.describe('S-4 — a grantee sees the shared account in the rails', () => {
     await login(page)
     await openCalendar(page)
 
-    await calendarRail(page).getByRole('link', { name: CAROL_LABEL }).click()
-    await expect(page).toHaveURL(/\/calendar.*account=/)
+    // No navigation at all since #79: carol's calendar is drawn in the same grid as alice's, so her
+    // event has to be on screen without anybody clicking anything. Clicking to reach it was the old
+    // shape, and the test that did so would now pass by accident on a rail entry that no longer
+    // switches anything.
+    await expect(calendarRail(page).getByRole('region', { name: CAROL_LABEL })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
     await expect(page.getByText(SHARED_EVENT_TITLE).first()).toBeVisible({
       timeout: SYNC_BUDGET_MS,
     })

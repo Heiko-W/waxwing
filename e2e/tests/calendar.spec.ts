@@ -182,15 +182,23 @@ test('a calendar can be created, hidden, shown and deleted', async ({ page }) =>
   await expect(row(page, eventTitle)).toBeVisible()
 
   /*
-   * ---- hide it. The assertion is NOT that the row disappears from the screen — a local filter
-   * would do that too, and a local filter is precisely what this feature must not be. It is that
-   * the event is gone after the month has been fetched again, which only happens if the server was
-   * asked with `inCalendar` naming the calendars that are left.
+   * ---- hide it. The assertion is NOT that the row disappears from the screen — a drawing filter
+   * would do that too, and that is precisely what this feature must not be. It is that the event is
+   * gone after the month has been fetched again, which only happens if the server was asked with
+   * `inCalendar` naming the calendars that are left. That claim is unchanged by #79: the decision
+   * moved from the server's `isVisible` into the replica's local prefs, but it still shapes the
+   * QUERY rather than hiding rows that were fetched anyway.
+   *
+   * `uncheck()` is load-bearing here and not a fancy way of clicking: it verifies the state
+   * IMMEDIATELY after the click, which is what a person does too. It caught the tick being wired to
+   * the database instead of to the click — `checked` was still the old value at t=0 and correct at
+   * t=50 ms, measured against this fixture. The optimistic entry in `CalendarPage` is what closes
+   * that gap; remove it and this line fails again.
    */
   await page.getByRole('checkbox', { name: CAL }).uncheck()
   await expect(row(page, eventTitle)).toHaveCount(0)
 
-  // ---- and back again: the tick is server state, so it survives a re-read of the month.
+  // ---- and back again: the decision is stored, so it survives a re-read of the month.
   await page.getByRole('checkbox', { name: CAL }).check()
   await expect(row(page, eventTitle)).toBeVisible()
 

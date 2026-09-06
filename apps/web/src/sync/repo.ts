@@ -848,6 +848,43 @@ export async function setPref(
   await db.localPrefs.put(row)
 }
 
+/** {@link LocalPrefRow} key: which calendars the reader has switched off, per account (#79). */
+export const CALENDAR_SHOWN_KEY = 'calendar.shown'
+
+/**
+ * The reader's own show/hide decisions for one account's calendars — `{ [calendarId]: boolean }`.
+ *
+ * LOCAL rather than the server's `isVisible`, and that is the whole point (#79). `isVisible` is a
+ * property of the calendar object, so switching one off is a WRITE: fine for your own calendars,
+ * impossible for a calendar someone shared read-only — which is precisely the kind the merged view
+ * put on screen. A tick box that cannot be ticked on half the rows is not a tick box.
+ *
+ * Only EXPLICIT decisions are stored, so the server's `isVisible` remains the starting value and a
+ * newly shared calendar appears without anyone having to opt in. Per device, like the theme: this
+ * says what THIS screen shows, and a phone's smaller screen is a legitimate reason to show less.
+ */
+export async function getCalendarShown(db: ReplicaDb, accountId: Id): Promise<Record<Id, boolean>> {
+  return (await getPref<Record<Id, boolean>>(db, accountId, CALENDAR_SHOWN_KEY)) ?? {}
+}
+
+/** Record one show/hide decision. Read-modify-write in a transaction, as the label registry does. */
+export async function setCalendarShown(
+  db: ReplicaDb,
+  accountId: Id,
+  calendarId: Id,
+  shown: boolean,
+): Promise<void> {
+  await db.transaction('rw', db.localPrefs, async () => {
+    const row = await db.localPrefs.get([accountId, CALENDAR_SHOWN_KEY])
+    const current = (row?.value as Record<Id, boolean> | undefined) ?? {}
+    await db.localPrefs.put({
+      accountId,
+      key: CALENDAR_SHOWN_KEY,
+      value: { ...current, [calendarId]: shown },
+    })
+  })
+}
+
 /**
  * Read-modify-write the label registry (M3.2) inside a single Dexie `rw` transaction so concurrent
  * tabs cannot lose an update (a blind `setPref` would clobber a sibling tab's change). `fn` receives

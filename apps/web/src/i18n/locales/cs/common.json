@@ -1976,6 +1976,7 @@
       "durationInvalid": "Zadejte délku mezi 1 a {{max}} minutami.",
       "zoneNote": "Časy v pásmu {{zone}}",
       "calendar": "Kalendář",
+      "calendarInAccount": "{{calendar}} ({{account}})",
       "description": "Poznámky",
       "location": "Místo",
       "participants": "Účastníci",

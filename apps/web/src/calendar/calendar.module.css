@@ -272,7 +272,11 @@
   display: block;
   inline-size: 100%;
   overflow: hidden;
-  border: 0;
+  /* The leading edge is reserved on EVERY chip, coloured or not (#79): a border that appeared only
+     on coloured ones would shift every title in the cell by 3px the moment a calendar was given a
+     colour, and a month grid where the text moves is a month grid that looks broken. */
+  border: 0 solid transparent;
+  border-inline-start-width: 3px;
   padding-inline: var(--waxwing-space-1);
   border-radius: var(--waxwing-radius-sm);
   background: var(--waxwing-surface-selected);
@@ -285,6 +289,55 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
+}
+
+/*
+ * An event wearing its CALENDAR's colour (#79) — a bar and a tint, never a fill.
+ *
+ * **Why not simply `background: var(--calendar-color)`.** `CALENDAR_COLORS` was chosen so a
+ * white TICK stays legible on a 1.15rem swatch — every value clears 4.5:1 against white, and that is
+ * the whole of the constraint it was designed under. Body text in `--waxwing-text` over the same
+ * eight values is a different question with a different answer: in the light theme the text is near
+ * black, so it fails against the darker half of the palette; in the dark theme it is near white, so
+ * it fails against the lighter half. There is no single text colour that passes on all eight in both
+ * themes, and picking one per swatch would put the app in the business of computing contrast at
+ * runtime for a value the SERVER owns and any other client may change.
+ *
+ * So the text colour is untouched and the colour is carried by two things that do not sit under it:
+ *
+ *  - the BAR, at full strength, mixed 15% towards `--waxwing-text` so it moves AWAY from the surface
+ *    in whichever theme is on — dark-on-light and light-on-dark both stay visible (WCAG 1.4.11 wants
+ *    3:1 for a non-text indicator, and the palette's own 4.5:1-against-white leaves room for it).
+ *    Same technique as `Button.module.css`'s pressed states.
+ *  - the TINT, bounded at 14% of the hue over the chip's existing surface. At 14% the mix moves the
+ *    background's luminance by a few percent, so the contrast `--waxwing-text` was designed for
+ *    against `--waxwing-surface-selected` survives intact — measured across all eight values in both
+ *    themes, the worst case loses under half a ratio point.
+ *
+ * Redundancy, not substitution (WCAG 1.4.1): the calendar an event belongs to is stated in words in
+ * the editor's picker and named in the rail. The colour is a shortcut, never the only telling.
+ */
+.chipColored {
+  border-inline-start-color: color-mix(in srgb, var(--calendar-color) 85%, var(--waxwing-text));
+  background: color-mix(in srgb, var(--calendar-color) 14%, var(--waxwing-surface-selected));
+}
+
+/*
+ * The roomy forms — an agenda row, a day-dialog row — take a DOT instead.
+ *
+ * A tint across a full-width row reads as "selected": both lists already change their background on
+ * hover, and a second background meaning "belongs to the red calendar" would leave a red event
+ * looking permanently pointed at. A `::before` keeps the row's children untouched, so the accessible
+ * name is still the title and nothing else.
+ */
+.rowColored::before {
+  content: "";
+  flex: none;
+  align-self: center;
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-radius: var(--waxwing-radius-full);
+  background: color-mix(in srgb, var(--calendar-color) 85%, var(--waxwing-text));
 }
 
 /*
@@ -638,6 +691,9 @@
   overflow: hidden;
   padding: var(--waxwing-space-hair) var(--waxwing-space-1);
   border: 1px solid var(--waxwing-border);
+  /* Reserved on every block, so a colour does not move the title — see `.chip`. Uncoloured, the
+     leading edge is simply a slightly heavier border in the ordinary border colour. */
+  border-inline-start-width: 3px;
   border-radius: var(--waxwing-radius-sm);
   background: var(--waxwing-surface-selected);
   color: var(--waxwing-text);
@@ -756,42 +812,30 @@
 }
 
 /*
- * The account whose calendars the rail is showing (S-4b) — one compact entry per calendar-served
- * account (the own account first, then each delegated/group account), so a group's calendars are
- * one click away without needing an incoming share card. `aria-current` marks the acting account.
+ * One delegated account's section of the rail (#79).
+ *
+ * This replaced the account NAV that stood here until the merged calendar: a list of links that
+ * switched the screen from one account to another. There is nothing to switch between any more —
+ * every account's calendars are in the rail at once, under the account's own name, which is the
+ * shape the contacts rail has had since S-4 (`contacts.module.css`, `.books`).
  */
-.calendarAccounts {
+.calendarAccountSection {
   display: flex;
   flex-direction: column;
-  gap: var(--waxwing-space-hair);
-  margin: 0 0 var(--waxwing-space-1);
-  padding: 0;
-  list-style: none;
-}
-
-.calendarAccountLink {
-  display: flex;
-  align-items: center;
   gap: var(--waxwing-space-2);
-  min-block-size: var(--waxwing-control-min);
-  padding: var(--waxwing-space-2);
-  border-radius: var(--waxwing-radius-sm);
-  color: var(--waxwing-text-muted);
-  font-size: var(--waxwing-text-xs);
-  text-decoration: none;
 }
 
-@media (hover: hover) {
-  .calendarAccountLink:hover {
-    background-color: var(--waxwing-surface-2);
-  }
-}
-
-.calendarAccountLink[aria-current="page"],
-.calendarAccountLink[aria-current="page"]:hover {
-  background-color: var(--waxwing-surface-selected);
-  color: var(--waxwing-accent);
-  font-weight: var(--waxwing-weight-medium);
+/*
+ * The section `?account=` points at.
+ *
+ * The share card's Open still names an account, and this is what the reader sees when it lands: the
+ * section it meant, marked. A left rule rather than a background, because the rows inside already
+ * use background for hover and for the tick — and `aria-current` says the same thing in words, so
+ * the rule is not carrying the meaning on its own (WCAG 1.4.1).
+ */
+.calendarAccountSection[aria-current="true"] {
+  border-inline-start: 2px solid var(--waxwing-accent);
+  padding-inline-start: var(--waxwing-space-2);
 }
 
 .calendarList {

@@ -1898,6 +1898,7 @@
       "durationInvalid": "1 分から {{max}} 分の間で入力してください。",
       "zoneNote": "時刻は {{zone}} です",
       "calendar": "カレンダー",
+      "calendarInAccount": "{{calendar}} ({{account}})",
       "description": "メモ",
       "location": "場所",
       "participants": "参加者",

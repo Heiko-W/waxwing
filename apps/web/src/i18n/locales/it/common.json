@@ -1957,6 +1957,7 @@
       "durationInvalid": "Inserisci una durata compresa tra 1 e {{max}} minuti.",
       "zoneNote": "Orari nel fuso {{zone}}",
       "calendar": "Calendario",
+      "calendarInAccount": "{{calendar}} ({{account}})",
       "description": "Note",
       "location": "Luogo",
       "participants": "Partecipanti",

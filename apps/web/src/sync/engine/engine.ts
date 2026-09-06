@@ -2296,7 +2296,11 @@ let activeEngine: SyncEngine | null = null
 const engines = new Map<Id, SyncEngine>()
 const activeEngineListeners = new Set<() => void>()
 
+/** Bumped on every fleet change; read by {@link getEngineEpoch}. */
+let engineEpoch = 0
+
 function notifyEngineListeners(): void {
+  engineEpoch += 1
   for (const listener of activeEngineListeners) listener()
 }
 
@@ -2348,6 +2352,18 @@ export async function stopAllEngines(): Promise<void> {
   clearEngines()
   await Promise.all(running.map((engine) => engine.stop().catch(() => {})))
 }
+/**
+ * A counter that changes whenever the set of running engines does (#79).
+ *
+ * `useSyncExternalStore` needs a snapshot that is STABLE between changes, and the natural
+ * candidates are not: `getRunningEngines()` builds a fresh array every call, so React would see a
+ * new value on every render and re-subscribe for ever. A number is the honest snapshot for
+ * "something about the fleet changed — re-resolve the engines you hold".
+ */
+export function getEngineEpoch(): number {
+  return engineEpoch
+}
+
 export function subscribeEngines(listener: () => void): () => void {
   activeEngineListeners.add(listener)
   return () => {

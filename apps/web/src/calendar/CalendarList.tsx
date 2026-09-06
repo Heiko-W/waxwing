@@ -5,11 +5,14 @@
  * their calendars and do nothing whatever with them. The consequence that justifies the work is not
  * the create button, though — it is the tick:
  *
- * **Hiding is server state, not a local filter.** `isVisible` goes to the server, so a calendar
- * switched off here is switched off in the calendar app on the phone as well, and the range query
- * stops asking for it (`eventsInRange(from, to, visibleIds)` — a parameter that existed since M5.6
- * and had no caller either). A local filter would have looked identical on this screen and been a
- * lie everywhere else.
+ * **Hiding WAS server state, and since #79 it is not.** `isVisible` is a property of the calendar
+ * object, so a tick used to be a `Calendar/set` — which is fine for a calendar the reader owns and
+ * flatly impossible for one somebody shared read-only. The merged view (#79) puts exactly that kind
+ * of calendar on the screen, so the decision moved into the replica's local prefs
+ * (`repo.ts`, `CALENDAR_SHOWN_KEY`) and the server's `isVisible` became the STARTING value. The
+ * range query still stops asking for a calendar that is off — the filter is built from the same
+ * answer — so it is still not a drawing trick; it is simply this device's decision rather than the
+ * account's.
  *
  * **Shape, and why it is Apple's.** One row is a checkbox tinted with the calendar's colour and the
  * calendar's name — no per-row toolbar, no gear, nothing else competing for the row. That is the
@@ -32,12 +35,25 @@
  * it.
  */
 
-import type { Calendar } from '@waxwing/jmap'
+import type { Calendar, Id } from '@waxwing/jmap'
 import { CalendarPlus, MoreHorizontal, UserPlus, UsersRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { mayShareCalendar } from '../sharing/calendar-roles'
 import { Button, Checkbox, IconButton, Menu, VisuallyHidden } from '../ui'
 import styles from './calendar.module.css'
+import { calendarColor } from './calendar-colour'
+
+/**
+ * The reader's own show/hide decisions for ONE account's calendars (#79) — `{ [calendarId]: bool }`.
+ *
+ * Only calendars the reader actually ticked appear in it; everything else falls back to the
+ * server's `isVisible`. Stored per account (`repo.ts`, `CALENDAR_SHOWN_KEY`), which is what makes
+ * two accounts that both call a calendar `c1` two different decisions (ADR-018).
+ */
+export type ShownOverrides = Readonly<Record<Id, boolean>>
+
+/** No decisions taken yet — a shared constant so callers do not allocate one per render. */
+export const NO_OVERRIDES: ShownOverrides = {}
 
 /**
  * Is this calendar drawn?
@@ -45,14 +61,49 @@ import styles from './calendar.module.css'
  * **Only `false` hides it.** `undefined` means the property was not asked for, or the server does
  * not send it — and reading that as "hidden" empties the whole screen on any server that does not
  * implement `isVisible`. The rule is one-sided on purpose (see `Calendar.isVisible`).
+ *
+ * The SERVER's answer only, and since #79 that makes it the STARTING value rather than the whole
+ * answer — see {@link isCalendarShown}.
  */
 export function isCalendarVisible(calendar: Calendar): boolean {
   return calendar.isVisible !== false
 }
 
-/** The ids whose events the range query should ask for. */
-export function visibleCalendarIds(calendars: readonly Calendar[]): string[] {
-  return calendars.filter(isCalendarVisible).map((calendar) => calendar.id)
+/**
+ * Is this calendar drawn, once the reader's own decision is taken into account (#79)?
+ *
+ * The local decision wins where there is one, and the server's `isVisible` is the value it starts
+ * from. Ticking used to WRITE `isVisible`, which is impossible on a calendar somebody shared
+ * read-only — precisely the kind the merged view puts on screen — so half the rows had a tick box
+ * that could not be ticked.
+ */
+export function isCalendarShown(
+  calendar: Calendar,
+  overrides: ShownOverrides = NO_OVERRIDES,
+): boolean {
+  return overrides[calendar.id] ?? isCalendarVisible(calendar)
+}
+
+/** The ids whose events the range query should ask for, for ONE account. */
+export function visibleCalendarIds(
+  calendars: readonly Calendar[],
+  overrides: ShownOverrides = NO_OVERRIDES,
+): string[] {
+  return calendars
+    .filter((calendar) => isCalendarShown(calendar, overrides))
+    .map((calendar) => calendar.id)
+}
+
+/**
+ * May the reader put an event INTO this calendar?
+ *
+ * `mayWriteAll` or `mayWriteOwn` — the draft has no single `mayWrite`, and the two are the same
+ * answer to "can I create something here": all events, or the ones I organise. A calendar granting
+ * neither is offered in the editor's picker but not selectable, so the reader can see it exists and
+ * cannot aim a save at a server that will refuse it.
+ */
+export function mayWriteEvents(calendar: Calendar): boolean {
+  return calendar.myRights?.mayWriteAll === true || calendar.myRights?.mayWriteOwn === true
 }
 
 /** May the reader change this calendar's name and colour? */
@@ -87,6 +138,21 @@ export function mayDelete(calendar: Calendar): boolean {
 
 export interface CalendarListProps {
   readonly calendars: readonly Calendar[]
+  /**
+   * The account these calendars belong to (#79).
+   *
+   * Needed for the COLOUR, not for identity: a calendar the server left without one is drawn in a
+   * derived colour (`calendar-colour.ts`), and the derivation is per account so two accounts that
+   * both call a calendar `c1` do not land on the same hue. The tick box has to use the same
+   * function the chips do — a chip coloured by a rule the tick box beside it does not follow is
+   * worse than no colour at all, because the rail is where the reader learns which colour is whose.
+   */
+  readonly accountId: Id
+  /**
+   * The reader's own show/hide decisions for these calendars (#79). Absent = none taken, in which
+   * case every tick reads the server's `isVisible` exactly as it did before.
+   */
+  readonly shown?: ShownOverrides
   /**
    * Whether to draw the "Calendars" heading above the list.
    *
@@ -155,11 +221,9 @@ export function CalendarList(props: CalendarListProps) {
                   no width at all. The span is what has to take the room. */}
               <span className={styles.calendarTick}>
                 <Checkbox
-                  checked={isCalendarVisible(calendar)}
+                  checked={isCalendarShown(calendar, props.shown)}
                   disabled={props.disabled}
-                  {...(calendar.color === null || calendar.color === undefined
-                    ? {}
-                    : { style: { accentColor: calendar.color } })}
+                  style={{ accentColor: calendarColor(props.accountId, calendar) }}
                   label={<span className={styles.calendarName}>{calendar.name}</span>}
                   onChange={(event) => props.onToggle(calendar, event.target.checked)}
                 />

@@ -1898,6 +1898,7 @@
       "durationInvalid": "请输入 1 到 {{max}} 分钟之间的时长。",
       "zoneNote": "时间为 {{zone}} 时区",
       "calendar": "日历",
+      "calendarInAccount": "{{calendar}} ({{account}})",
       "description": "备注",
       "location": "地点",
       "participants": "参与者",

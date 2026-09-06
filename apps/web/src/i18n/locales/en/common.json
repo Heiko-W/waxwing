@@ -1924,6 +1924,7 @@
       "durationInvalid": "Enter a length between 1 and {{max}} minutes.",
       "zoneNote": "Times are in {{zone}}",
       "calendar": "Calendar",
+      "calendarInAccount": "{{calendar}} ({{account}})",
       "description": "Notes",
       "location": "Location",
       "participants": "Participants",

@@ -39,6 +39,7 @@ export {
   clearEngines,
   createSyncEngine,
   getActiveEngine,
+  getEngineEpoch,
   getEngineFor,
   getRunningEngines,
   MAINTENANCE_INTERVAL_MS,

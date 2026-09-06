@@ -35,6 +35,8 @@ import {
  * WHICH day an event appears on, WHICH sentence a failure produces, and what a click on a day does.
  */
 
+const ACC = 'acc'
+
 const CALENDAR: Calendar = {
   id: 'c1',
   name: 'Work',
@@ -94,6 +96,7 @@ const TODAY = new Date(2026, 7, 20, 10, 0)
 function occurrence(
   over: Partial<CalendarEvent> = {},
   identity: EventIdentity = { writeId: '0', series: false },
+  accountId: Id = ACC,
 ): PlacedEvent {
   return placeEvent(
     {
@@ -107,11 +110,10 @@ function occurrence(
       duration: 'PT60M',
       ...over,
     } as CalendarEvent,
+    accountId,
     identity,
   )
 }
-
-const ACC = 'acc'
 
 let db: ReplicaDb
 
@@ -162,6 +164,7 @@ function unpackFilter(filter: CalendarEventFilter | null | undefined): {
  * is the "cannot be traced" case.
  */
 async function materialize(
+  accountId: Id,
   key: string,
   spec: { filter?: CalendarEventFilter | null },
   c: CalendarClient,
@@ -174,7 +177,7 @@ async function materialize(
     // Exactly what the engine does with a refused window it has never materialized: a placeholder
     // row, so the screen can tell "tried and failed" from "still loading".
     await putCalendarQueryCache(db, {
-      accountId: ACC,
+      accountId,
       key,
       ids: [],
       objectIds: [],
@@ -201,10 +204,10 @@ async function materialize(
     } as CalendarEvent)
   }
 
-  await putCalendarEvents(db, ACC, [...objects.values()], false)
-  await putCalendarEvents(db, ACC, occurrences, true)
+  await putCalendarEvents(db, accountId, [...objects.values()], false)
+  await putCalendarEvents(db, accountId, occurrences, true)
   await putCalendarQueryCache(db, {
-    accountId: ACC,
+    accountId,
     key,
     ids: occurrences.map((event) => event.id),
     objectIds: [...objects.keys()],
@@ -215,30 +218,42 @@ async function materialize(
   })
 }
 
-/** The narrow slice of the engine this screen touches, backed by the injected client. */
-function fakeEngine(c: CalendarClient): SyncEngine {
+/**
+ * The narrow slice of the engine this screen touches, backed by the injected client.
+ *
+ * Parameterised by account since #79: the merged grid registers one window PER account, and an
+ * engine that wrote every answer into `acc` would have made the collision tests below pass for the
+ * wrong reason — two accounts' events landing in one account's rows.
+ */
+function fakeEngine(accountId: Id, c: CalendarClient): SyncEngine {
   const keyOf = (spec: { filter?: CalendarEventFilter | null }): string =>
     canonicalCalendarQueryKey({ filter: spec.filter ?? null, expandRecurrences: true })
   return {
-    accountId: ACC,
+    accountId,
     watchCalendarQuery(spec: { filter?: CalendarEventFilter | null }) {
       const key = keyOf(spec)
       // Swallowed: `afterEach` deletes the replica, and a seed still in flight then rejects with
       // `DatabaseClosedError` — an unhandled rejection that fails the run from outside any test.
-      void materialize(key, spec, c).catch(() => {})
+      void materialize(accountId, key, spec, c).catch(() => {})
       return key
     },
     unwatchCalendarQuery() {},
     async refreshCalendarWindow(spec: { filter?: CalendarEventFilter | null }) {
-      await materialize(keyOf(spec), spec, c).catch(() => {})
+      await materialize(accountId, keyOf(spec), spec, c).catch(() => {})
     },
   } as unknown as SyncEngine
 }
 
+/** The single-account screen, on a fresh replica — what all but the merged tests below use. */
 function renderPage(c: CalendarClient) {
   db = freshDb()
-  setEngineFor(ACC, fakeEngine(c))
+  setEngineFor(ACC, fakeEngine(ACC, c))
   void putCalendars(db, ACC, [CALENDAR]).catch(() => {})
+  return mountPage(c)
+}
+
+/** Mount (or re-mount) the screen against whatever `db` currently holds. */
+function mountPage(c: CalendarClient) {
   return render(
     <RouterProvider>
       <ToastProvider>
@@ -302,6 +317,13 @@ function toolbar(): HTMLElement {
   while (node !== null && !node.contains(plus)) node = node.parentElement
   if (node === null) throw new Error('no element holds both ends of the toolbar')
   return node
+}
+
+/** `#rrggbb` as jsdom writes it back from `accent-color`. */
+function toRgb(hex: string): string {
+  const value = hex.trim().replace('#', '')
+  const [r, g, b] = [0, 2, 4].map((at) => Number.parseInt(value.slice(at, at + 2), 16))
+  return `rgb(${r}, ${g}, ${b})`
 }
 
 describe('CalendarPage reporting', () => {
@@ -1128,7 +1150,17 @@ describe('the calendar list', () => {
     expect(seen.at(-1)).toEqual(['c1'])
   })
 
-  it('writes the tick to the SERVER and asks again with what is left', async () => {
+  /**
+   * #79 — the tick is a LOCAL decision now, and the query still honours it.
+   *
+   * This test used to assert the opposite: `updateCalendar('c2', { isVisible: false })`. That was
+   * fine while every calendar on screen belonged to the reader, and it is impossible on a calendar
+   * somebody shared read-only — `mayWriteAll` is false there, the request comes back refused, and
+   * the reader cannot hide a calendar they were merely shown. So the WRITE is what changed and the
+   * consequence is what did not: the month is still re-fetched naming only what is left, which is
+   * the difference between hiding a calendar and pretending to.
+   */
+  it('records the tick locally and asks again with what is left', async () => {
     const user = userEvent.setup()
     const updates: [string, unknown][] = []
     const seen: (readonly string[] | undefined)[] = []
@@ -1147,31 +1179,40 @@ describe('the calendar list', () => {
 
     await user.click(await screen.findByRole('checkbox', { name: 'Privat' }))
 
-    await waitFor(() => expect(updates).toEqual([['c2', { isVisible: false }]]))
-    // And the month is re-fetched WITHOUT it: the optimistic tick changes what the query asks for,
-    // which is the difference between hiding a calendar and pretending to.
     await waitFor(() => expect(seen.at(-1)).toEqual(['c1']))
+    // And nothing was sent: hiding is this device's decision, not the account's.
+    expect(updates).toEqual([])
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Privat' })).not.toBeChecked())
   })
 
-  it('puts the tick back when the server refuses', async () => {
+  /**
+   * #79 — the decision survives a rebuild, because it is in the replica and not in this component.
+   *
+   * Hiding used to be the server's `isVisible`, so "does it stick" was the server's problem. Moving
+   * it local moves that problem here: a decision kept in `useState` would evaporate on the next
+   * mount, and the calendar the reader switched off this morning would be back at lunchtime. The
+   * remount is against the SAME database, which is the whole assertion.
+   */
+  it('remembers a hidden calendar across a remount', async () => {
     const user = userEvent.setup()
-    renderPage(
-      client({
-        listCalendars: async () => [WORK, PRIVATE],
-        updateCalendar: async () => {
-          throw new CalendarSetError('forbidden', 'Read-only calendar.')
-        },
-      }),
-    )
+    const seen: (readonly string[] | undefined)[] = []
+    const c = client({
+      listCalendars: async () => [WORK, PRIVATE],
+      eventsInRange: async (_from, _to, ids) => {
+        seen.push(ids)
+        return []
+      },
+    })
+    renderPage(c)
 
     await user.click(await screen.findByRole('checkbox', { name: 'Privat' }))
+    await waitFor(() => expect(seen.at(-1)).toEqual(['c1']))
 
-    await waitFor(() =>
-      expect(screen.getByText('The calendar could not be shown or hidden.')).toBeInTheDocument(),
-    )
-    // Re-read rather than patched back, so the screen ends up agreeing with the server rather than
-    // with our guess about it.
-    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Privat' })).toBeChecked())
+    cleanup()
+    mountPage(c)
+
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Privat' })).not.toBeChecked())
+    expect(seen.at(-1)).toEqual(['c1'])
   })
 
   it('offers no Delete for the DEFAULT calendar', async () => {
@@ -1324,7 +1365,7 @@ describe('the share dialog reads the live calendar (B56)', () => {
 
   function renderWithSession(c: CalendarClient) {
     db = freshDb()
-    setEngineFor(ACC, fakeEngine(c))
+    setEngineFor(ACC, fakeEngine(ACC, c))
     void putCalendars(db, ACC, [CALENDAR]).catch(() => {})
     const value = {
       connected: {
@@ -1366,41 +1407,81 @@ describe('the share dialog reads the live calendar (B56)', () => {
     )
   })
 })
-
-describe('acting in a delegated calendar account (S-4b)', () => {
+/**
+ * #79 — ONE grid for every calendar-served account.
+ *
+ * The block this replaced ("acting in a delegated calendar account", S-4b) asserted the opposite
+ * design: `?account=` scoped the whole screen to one account, the rail was a list of links, and the
+ * events window registered on exactly ONE engine. That answered "whose calendar am I looking at?"
+ * and refused to answer the question a shared calendar exists for — "am I free when the group is
+ * busy?" — because the two halves could never be on screen together.
+ *
+ * The tests here are the ones that could not have been written under the old design, and every one
+ * of them is an ADR-018 collision in disguise: both accounts below deliberately call their calendar
+ * `c1` and their event `eaaaaa0`, because that is what a real pair of accounts does.
+ */
+describe('the merged calendar (#79)', () => {
   /* A group account whose `calendar` area the server serves (measured shape: a group membership or
      a calendar share both arrive as a non-personal account in the session). */
-  const delegatedB = {
-    id: 'b',
+  const GROUP = {
+    id: 'grp',
     name: 'group@waxwing.test',
     isPersonal: false,
     isReadOnly: false,
     areas: { mail: 'granted', contacts: 'granted', files: 'granted', calendar: 'granted' },
   } as const
 
-  function renderInAccount(
-    path: string,
-    injected?: CalendarClient,
-    seed?: (database: ReplicaDb) => Promise<void>,
-  ) {
+  const calendar = (over: Partial<Calendar> = {}): Calendar =>
+    ({ ...CALENDAR, ...over }) as unknown as Calendar
+
+  /** The same short id in both accounts — the collision, stated as a fixture. */
+  const OWN_C1 = calendar({ id: 'c1', name: 'Work', color: '#2761c4', isDefault: true })
+  const GROUP_C1 = calendar({ id: 'c1', name: 'Team', color: '#c2372f' })
+
+  /** A calendar shared read-only: everything granted except writing. */
+  const GROUP_READONLY = calendar({
+    id: 'c1',
+    name: 'Team',
+    myRights: {
+      mayReadFreeBusy: true,
+      mayReadItems: true,
+      mayWriteAll: false,
+      mayWriteOwn: false,
+      mayUpdatePrivate: false,
+      mayRSVP: false,
+      mayShare: false,
+      mayDelete: false,
+    },
+  })
+
+  beforeEach(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+  })
+
+  function renderMerged(own: CalendarClient, group: CalendarClient, path = '/calendar') {
     db = freshDb()
-    if (seed !== undefined) void seed(db)
+    setEngineFor(ACC, fakeEngine(ACC, own))
+    setEngineFor(GROUP.id, fakeEngine(GROUP.id, group))
     const value = {
       connected: {
         client: { call: async () => ({}) },
         accountId: ACC,
         accounts: [],
-        delegated: [delegatedB],
-        jmapSession: { accounts: { [ACC]: {}, b: {} } },
+        delegated: [GROUP],
+        jmapSession: { accounts: { [ACC]: {}, [GROUP.id]: {} } },
       },
     } as unknown as SessionContextValue
     window.history.pushState({}, '', path)
+    const clients = new Map<Id, CalendarClient>([
+      [ACC, own],
+      [GROUP.id, group],
+    ])
     return render(
       <RouterProvider>
         <SessionContext.Provider value={value}>
           <ToastProvider>
             <ReplicaProvider accountId={ACC} db={db}>
-              <CalendarPage client={injected ?? client()} today={TODAY} />
+              <CalendarPage clients={clients} today={TODAY} />
             </ReplicaProvider>
           </ToastProvider>
         </SessionContext.Provider>
@@ -1408,149 +1489,382 @@ describe('acting in a delegated calendar account (S-4b)', () => {
     )
   }
 
-  it('registers the events window on the ?account= engine, not the own (ADR-018)', async () => {
-    const watchOwn = vi.fn(() => 'ka')
-    const watchGroup = vi.fn(() => 'kb')
-    setEngineFor(ACC, {
-      accountId: ACC,
-      watchCalendarQuery: watchOwn,
-      unwatchCalendarQuery: vi.fn(),
-    } as unknown as SyncEngine)
-    setEngineFor('b', {
-      accountId: 'b',
-      watchCalendarQuery: watchGroup,
-      unwatchCalendarQuery: vi.fn(),
-    } as unknown as SyncEngine)
-    renderInAccount('/calendar?account=b')
-    // The window registers in an effect; under load a 1s waitFor is a flake.
-    await waitFor(() => expect(watchGroup).toHaveBeenCalled(), { timeout: 5_000 })
-    // Without the ?account= scope the window would register on the OWN engine and draw nothing of
-    // the group's — the id-collision half of the story (ADR-018), asserted from the other side.
-    expect(watchOwn).not.toHaveBeenCalled()
+  /** The group's own occurrence — same short id as the reader's, which is the point. */
+  const groupEvent = (title: string) =>
+    occurrence({ title }, { writeId: '0', series: false }, GROUP.id)
+
+  it('draws both accounts’ events in the SAME grid', async () => {
+    /*
+     * The feature, in one assertion. Before #79 exactly one of these two was ever on screen and the
+     * other one needed a route change to reach — so a team member planning a week had to hold half
+     * of it in their head.
+     */
+    renderMerged(
+      client({
+        listCalendars: async () => [OWN_C1],
+        eventsInRange: async () => [occurrence({ title: 'Mine' })],
+      }),
+      client({
+        listCalendars: async () => [GROUP_C1],
+        eventsInRange: async () => [groupEvent('Theirs')],
+      }),
+    )
+
+    expect(await screen.findByRole('button', { name: 'Mine' }, { timeout: 5_000 })).toBeVisible()
+    expect(await screen.findByRole('button', { name: 'Theirs' })).toBeVisible()
   })
 
-  it('offers the delegated account as a standing rail entry — no share card needed (S-4b)', async () => {
-    const user = userEvent.setup()
-    const watchOwn = vi.fn(() => 'ka')
-    const watchGroup = vi.fn(() => 'kb')
-    setEngineFor(ACC, {
-      accountId: ACC,
-      watchCalendarQuery: watchOwn,
-      unwatchCalendarQuery: vi.fn(),
-    } as unknown as SyncEngine)
-    setEngineFor('b', {
-      accountId: 'b',
-      watchCalendarQuery: watchGroup,
-      unwatchCalendarQuery: vi.fn(),
-    } as unknown as SyncEngine)
-    renderInAccount('/calendar')
-    // The rail names every calendar-served account; the group is one click away.
-    const groupLink = await screen.findByRole(
-      'link',
+  /**
+   * #79 — a chip's React key has to carry the account.
+   *
+   * Both fixtures below are event `eaaaaa0` at the same instant, because that is what two accounts
+   * routinely look like (ADR-018). Keyed by `id + start` alone they are ONE child as far as React
+   * is concerned: it warns, and what it does with the duplicate is explicitly unsupported —
+   * "duplicated and/or omitted", and free to change between versions. Asserted on the warning,
+   * because the rendering it produces today is exactly the thing that is not guaranteed.
+   */
+  it('keys a chip by account as well as id, so two accounts cannot collide', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      renderMerged(
+        client({
+          listCalendars: async () => [OWN_C1],
+          eventsInRange: async () => [occurrence({ title: 'Mine' })],
+        }),
+        client({
+          listCalendars: async () => [GROUP_C1],
+          eventsInRange: async () => [groupEvent('Theirs')],
+        }),
+      )
+
+      await screen.findByRole('button', { name: 'Mine' }, { timeout: 5_000 })
+      await screen.findByRole('button', { name: 'Theirs' })
+      expect(
+        errors.mock.calls
+          .map((call) => String(call[0]))
+          .filter((message) => message.includes('same key')),
+      ).toEqual([])
+    } finally {
+      errors.mockRestore()
+    }
+  })
+
+  it('groups the rail by account, the reader’s own first and unlabelled', async () => {
+    // Two calendars called `c1`, one called Work and one called Team: without the account heading
+    // the rail would be two ticks with no way to tell whose is whose.
+    renderMerged(
+      client({ listCalendars: async () => [OWN_C1] }),
+      client({ listCalendars: async () => [GROUP_C1] }),
+    )
+
+    const section = await screen.findByRole(
+      'region',
       { name: 'group@waxwing.test' },
       { timeout: 5_000 },
     )
-    expect(groupLink.getAttribute('href')).toContain('?account=b')
-    // The own account is the acting one here: it carries `aria-current`, the group does not.
-    expect(screen.getByRole('link', { name: ACC })).toHaveAttribute('aria-current', 'page')
-    expect(groupLink).not.toHaveAttribute('aria-current')
-    // Clicking the group entry moves the whole screen into that account — its engine gets the window.
-    await user.click(groupLink)
-    expect(window.location.search).toContain('account=b')
-    await waitFor(() => expect(watchGroup).toHaveBeenCalled(), { timeout: 5_000 })
-    expect(screen.getByRole('link', { name: 'group@waxwing.test' })).toHaveAttribute(
+    expect(within(section).getByRole('checkbox', { name: 'Team' })).toBeInTheDocument()
+    // The reader's own calendar is NOT inside that section — it is the unlabelled first group.
+    expect(within(section).queryByRole('checkbox', { name: 'Work' })).not.toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Work' })).toBeInTheDocument()
+  })
+
+  it('writes an event through the client of ITS OWN account (ADR-018)', async () => {
+    /*
+     * The collision, driven end to end. Both accounts hold a calendar `c1` and an event whose
+     * write id is `0`; the two chips are distinguishable only by title. A screen with one "acting"
+     * client would send this save to whichever account it happened to be in — and the server would
+     * accept it, because `0` exists there too. The event that came back changed would be somebody
+     * else's.
+     */
+    const user = userEvent.setup()
+    const ownUpdate = vi.fn<CalendarClient['updateEvent']>(async () => {})
+    const groupUpdate = vi.fn<CalendarClient['updateEvent']>(async () => {})
+    renderMerged(
+      client({
+        listCalendars: async () => [OWN_C1],
+        eventsInRange: async () => [occurrence({ title: 'Mine' })],
+        updateEvent: ownUpdate,
+      }),
+      client({
+        listCalendars: async () => [GROUP_C1],
+        eventsInRange: async () => [groupEvent('Theirs')],
+        updateEvent: groupUpdate,
+      }),
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'Theirs' }, { timeout: 5_000 }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(groupUpdate).toHaveBeenCalled())
+    expect(ownUpdate).not.toHaveBeenCalled()
+    // And it carried the group's own event, not a look-alike from the other account.
+    expect((groupUpdate.mock.calls[0]?.[0] as PlacedEvent).accountId).toBe(GROUP.id)
+  })
+
+  it('lets the reader hide a calendar they may only READ', async () => {
+    /*
+     * The reason hiding had to stop being `Calendar/set`. `mayWriteAll: false` is what a read-only
+     * share looks like, and the old tick box aimed an `isVisible` patch at it: refused by the
+     * server, tick snapped back, toast. The one kind of calendar the merged view exists to show was
+     * the one kind that could not be switched off.
+     */
+    const user = userEvent.setup()
+    const updateCalendar = vi.fn(async () => {})
+    renderMerged(
+      client({
+        listCalendars: async () => [OWN_C1],
+        eventsInRange: async () => [occurrence({ title: 'Mine' })],
+      }),
+      client({
+        listCalendars: async () => [GROUP_READONLY],
+        eventsInRange: async () => [groupEvent('Theirs')],
+        updateCalendar,
+      }),
+    )
+
+    const section = await screen.findByRole(
+      'region',
+      { name: 'group@waxwing.test' },
+      { timeout: 5_000 },
+    )
+    await screen.findByRole('button', { name: 'Theirs' })
+    await user.click(within(section).getByRole('checkbox', { name: 'Team' }))
+
+    // Gone from the grid, and the reader's own event untouched beside it.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Theirs' })).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('button', { name: 'Mine' })).toBeInTheDocument()
+    // Nothing was aimed at a calendar the reader cannot write to.
+    expect(updateCalendar).not.toHaveBeenCalled()
+  })
+
+  it('offers every account’s calendars in the editor, and names whose they are', async () => {
+    // Two calendars called `c1`. The `<option>` values have to carry the account or the picker is
+    // ambiguous — and the label has to carry the account name or the reader cannot tell them apart.
+    const user = userEvent.setup()
+    renderMerged(
+      client({ listCalendars: async () => [OWN_C1] }),
+      client({ listCalendars: async () => [GROUP_C1] }),
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'New event' }, { timeout: 5_000 }))
+    const dialog = await screen.findByRole('dialog')
+    const picker = within(dialog).getByLabelText('Calendar')
+    expect(within(picker).getByRole('option', { name: 'Work' })).toBeInTheDocument()
+    expect(
+      within(picker).getByRole('option', { name: 'Team (group@waxwing.test)' }),
+    ).toBeInTheDocument()
+    // The reader's own default is preselected: a group's calendar is never the surprise default.
+    expect(picker).toHaveValue(`${ACC}/c1`)
+  })
+
+  it('will not let a new event be aimed at a calendar the reader cannot write to', async () => {
+    // Rights decide what is selectable, not whether the server refuses afterwards — the same rule
+    // the rail's ⋯ menu has followed since K-1.
+    const user = userEvent.setup()
+    renderMerged(
+      client({ listCalendars: async () => [OWN_C1] }),
+      client({ listCalendars: async () => [GROUP_READONLY] }),
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'New event' }, { timeout: 5_000 }))
+    const dialog = await screen.findByRole('dialog')
+    const option = within(within(dialog).getByLabelText('Calendar')).getByRole('option', {
+      name: 'Team (group@waxwing.test)',
+    })
+    expect(option).toBeDisabled()
+  })
+
+  it('makes ?account= REVEAL the shared calendar instead of narrowing the screen', async () => {
+    /*
+     * What the share card's Open still means (#79). It used to scope the whole screen to the
+     * sharer's account; there is nothing to scope any more, so the parameter marks the account's
+     * section and switches its calendars back on. Making it inert was the alternative and it would
+     * have left the one button on that card doing visibly nothing.
+     */
+    const user = userEvent.setup()
+    const own = client({ listCalendars: async () => [OWN_C1] })
+    const group = client({
+      listCalendars: async () => [GROUP_C1],
+      eventsInRange: async () => [groupEvent('Theirs')],
+    })
+    renderMerged(own, group)
+
+    const section = await screen.findByRole(
+      'region',
+      { name: 'group@waxwing.test' },
+      { timeout: 5_000 },
+    )
+    await screen.findByRole('button', { name: 'Theirs' })
+    await user.click(within(section).getByRole('checkbox', { name: 'Team' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Theirs' })).not.toBeInTheDocument(),
+    )
+
+    // Now arrive by the card's own route.
+    cleanup()
+    window.history.pushState({}, '', `/calendar?account=${GROUP.id}`)
+    render(
+      <RouterProvider>
+        <SessionContext.Provider
+          value={
+            {
+              connected: {
+                client: { call: async () => ({}) },
+                accountId: ACC,
+                accounts: [],
+                delegated: [GROUP],
+                jmapSession: { accounts: { [ACC]: {}, [GROUP.id]: {} } },
+              },
+            } as unknown as SessionContextValue
+          }
+        >
+          <ToastProvider>
+            <ReplicaProvider accountId={ACC} db={db}>
+              <CalendarPage
+                clients={
+                  new Map<Id, CalendarClient>([
+                    [ACC, own],
+                    [GROUP.id, group],
+                  ])
+                }
+                today={TODAY}
+              />
+            </ReplicaProvider>
+          </ToastProvider>
+        </SessionContext.Provider>
+      </RouterProvider>,
+    )
+
+    // Back on the grid, beside everything else — not instead of it.
+    expect(await screen.findByRole('button', { name: 'Theirs' }, { timeout: 5_000 })).toBeVisible()
+    expect(await screen.findByRole('region', { name: 'group@waxwing.test' })).toHaveAttribute(
       'aria-current',
-      'page',
+      'true',
     )
   })
 
-  it('offers the account nav in the phone sheet, and the switch closes it (S-4b)', async () => {
-    forcePhone()
+  /**
+   * The colour half of #79 (a product decision, and it applies to a single account too).
+   *
+   * Every chip on this screen was `--waxwing-surface-selected` until now, whichever calendar it came
+   * from — so the palette a reader picks in `CalendarDialog` was visible on eight tick boxes and
+   * nowhere else. In a merged grid that is not merely a missed opportunity: "is that meeting mine or
+   * the group's?" becomes unanswerable without opening it.
+   *
+   * Asserted through the custom property rather than the class name, because a CSS-module class is a
+   * build artefact and the property is the actual contract between this screen and its stylesheet.
+   */
+  it('paints each event in its OWN calendar’s colour, per account (ADR-018)', async () => {
+    renderMerged(
+      client({
+        listCalendars: async () => [OWN_C1],
+        eventsInRange: async () => [occurrence({ title: 'Mine' })],
+      }),
+      client({
+        listCalendars: async () => [GROUP_C1],
+        eventsInRange: async () => [groupEvent('Theirs')],
+      }),
+    )
+
+    const mine = await screen.findByRole('button', { name: 'Mine' }, { timeout: 5_000 })
+    const theirs = await screen.findByRole('button', { name: 'Theirs' })
+    // Both calendars are called `c1`. A lookup that forgot the account would give both chips the
+    // same colour — and it would be the wrong one for one of them.
+    expect(mine.style.getPropertyValue('--calendar-color')).toBe('#2761c4')
+    expect(theirs.style.getPropertyValue('--calendar-color')).toBe('#c2372f')
+  })
+
+  it('gives a colourless calendar the SAME derived colour on the chip and on its tick box', async () => {
+    /*
+     * This test used to assert the opposite — that a calendar the server left without a colour drew
+     * a neutral chip — and the reasoning behind it was right: inventing a hue for the chip alone
+     * would put a colour on it that the tick box beside it does not have, and the rail is where the
+     * reader learns which colour belongs to whom.
+     *
+     * What changed is not that argument, it is the scope. Stalwart's default calendar carries no
+     * colour at all (measured), so "neutral when colourless" meant the merged grid drew every
+     * account in the same chip for the commonest setup there is — the one thing #79 exists to stop.
+     * So the colour is derived (`calendar-colour.ts`), and the tick box derives it the same way.
+     * The assertion is the AGREEMENT: whatever the rule picks, both halves follow it.
+     */
+    renderMerged(
+      client({
+        listCalendars: async () => [calendar({ id: 'c1', name: 'Work', color: null })],
+        eventsInRange: async () => [occurrence({ title: 'Mine' })],
+      }),
+      client({ listCalendars: async () => [] }),
+    )
+
+    const mine = await screen.findByRole('button', { name: 'Mine' }, { timeout: 5_000 })
+    const chip = mine.style.getPropertyValue('--calendar-color')
+    expect(chip).not.toBe('')
+    const tick = screen.getByRole('checkbox', { name: 'Work' })
+    // Compared as rgb: jsdom normalises `accent-color` to `rgb(...)` while a custom property keeps
+    // whatever string it was given, so the two agree in colour and differ in notation.
+    expect(tick.style.accentColor).toBe(toRgb(chip))
+  })
+
+  it('carries the colour into the agenda as well as the grid', async () => {
+    // Three views draw the same events; a colour that only reached one of them would read as a bug
+    // in the other two.
     const user = userEvent.setup()
+    renderMerged(
+      client({
+        listCalendars: async () => [OWN_C1],
+        eventsInRange: async () => [occurrence({ title: 'Mine' })],
+      }),
+      client({ listCalendars: async () => [] }),
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'Agenda' }, { timeout: 5_000 }))
+    const row = await screen.findByRole('button', { name: /Mine/ })
+    expect(row.style.getPropertyValue('--calendar-color')).toBe('#2761c4')
+  })
+
+  it('watches a window on EVERY account’s engine, not one (ADR-018)', async () => {
+    // The read half of the same story: a window registered on the wrong engine syncs the wrong
+    // account, so before #79 exactly one account was ever kept fresh.
     const watchOwn = vi.fn(() => 'ka')
     const watchGroup = vi.fn(() => 'kb')
+    db = freshDb()
     setEngineFor(ACC, {
       accountId: ACC,
       watchCalendarQuery: watchOwn,
       unwatchCalendarQuery: vi.fn(),
     } as unknown as SyncEngine)
-    setEngineFor('b', {
-      accountId: 'b',
+    setEngineFor(GROUP.id, {
+      accountId: GROUP.id,
       watchCalendarQuery: watchGroup,
       unwatchCalendarQuery: vi.fn(),
     } as unknown as SyncEngine)
-    renderInAccount('/calendar')
-    // Below 40em the calendar list lives in a sheet opened from the view menu.
-    await user.click(screen.getByRole('button', { name: 'Calendar view' }))
-    await user.click(await screen.findByRole('menuitem', { name: 'Calendars…' }))
-    const groupLink = await screen.findByRole(
-      'link',
-      { name: 'group@waxwing.test' },
-      { timeout: 5_000 },
-    )
-    await user.click(groupLink)
-    // The switch moved the screen into the group's account, and the sheet closed itself.
-    expect(window.location.search).toContain('account=b')
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), {
-      timeout: 5_000,
-    })
-    await waitFor(() => expect(watchGroup).toHaveBeenCalled(), { timeout: 5_000 })
-  })
-
-  it('never draws the PREVIOUS account’s calendar list after a switch (S-4b, ADR-018)', async () => {
-    // The review finding this pins: `calendars` used to be a plain boolean-"loaded" list, so the
-    // moment after the route switch the rail still drew the OLD account's calendars while acting in
-    // the new one — and a tick then would write `isVisible` for an old id against the new account.
-    // Now the answer is tagged with its account and a foreign tag falls back to the replica.
-    let calls = 0
-    const slow = client({
-      listCalendars: async () => {
-        calls += 1
-        if (calls === 1) return [{ ...CALENDAR, name: 'Own Cal' }]
-        // The new account's network answer never lands — the stale list would persist for ever
-        // without the tag, which is what makes this test deterministic rather than a race.
-        return await new Promise<Calendar[]>(() => {})
+    void putCalendars(db, ACC, [OWN_C1]).catch(() => {})
+    void putCalendars(db, GROUP.id, [GROUP_C1]).catch(() => {})
+    const value = {
+      connected: {
+        client: { call: async () => ({}) },
+        accountId: ACC,
+        accounts: [],
+        delegated: [GROUP],
+        jmapSession: { accounts: { [ACC]: {}, [GROUP.id]: {} } },
       },
-    })
-    const user = userEvent.setup()
-    setEngineFor(ACC, {
-      accountId: ACC,
-      watchCalendarQuery: vi.fn(() => 'ka'),
-      unwatchCalendarQuery: vi.fn(),
-    } as unknown as SyncEngine)
-    setEngineFor('b', {
-      accountId: 'b',
-      watchCalendarQuery: vi.fn(() => 'kb'),
-      unwatchCalendarQuery: vi.fn(),
-    } as unknown as SyncEngine)
-    renderInAccount('/calendar', slow, (database) =>
-      putCalendars(database, 'b', [{ ...CALENDAR, id: 'gb', name: 'Group Rep Cal' }]),
+    } as unknown as SessionContextValue
+    window.history.pushState({}, '', '/calendar')
+    render(
+      <RouterProvider>
+        <SessionContext.Provider value={value}>
+          <ToastProvider>
+            <ReplicaProvider accountId={ACC} db={db}>
+              <CalendarPage client={client()} today={TODAY} />
+            </ReplicaProvider>
+          </ToastProvider>
+        </SessionContext.Provider>
+      </RouterProvider>,
     )
-    // Own list lands…
-    await screen.findByRole('checkbox', { name: 'Own Cal' }, { timeout: 5_000 })
-    // …switch to the group account whose network answer never arrives.
-    await user.click(screen.getByRole('link', { name: 'group@waxwing.test' }))
-    // The OWN list must be gone (it is tagged for the own account) and the replica's answer for
-    // the new account drawn instead.
-    await screen.findByRole('checkbox', { name: 'Group Rep Cal' }, { timeout: 5_000 })
-    expect(screen.queryByRole('checkbox', { name: 'Own Cal' })).not.toBeInTheDocument()
-  })
 
-  it('vets ?account= — an unknown account falls back to the own one (B37)', async () => {
-    const watchOwn = vi.fn(() => 'ka')
-    const watchGroup = vi.fn(() => 'kb')
-    setEngineFor(ACC, {
-      accountId: ACC,
-      watchCalendarQuery: watchOwn,
-      unwatchCalendarQuery: vi.fn(),
-    } as unknown as SyncEngine)
-    setEngineFor('b', {
-      accountId: 'b',
-      watchCalendarQuery: watchGroup,
-      unwatchCalendarQuery: vi.fn(),
-    } as unknown as SyncEngine)
-    renderInAccount('/calendar?account=not-granted')
     await waitFor(() => expect(watchOwn).toHaveBeenCalled(), { timeout: 5_000 })
-    expect(watchGroup).not.toHaveBeenCalled()
+    await waitFor(() => expect(watchGroup).toHaveBeenCalled(), { timeout: 5_000 })
   })
 })

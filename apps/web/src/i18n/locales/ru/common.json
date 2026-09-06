@@ -1976,6 +1976,7 @@
       "durationInvalid": "Укажите длительность от 1 до {{max}} минут.",
       "zoneNote": "Время в зоне {{zone}}",
       "calendar": "Календарь",
+      "calendarInAccount": "{{calendar}} ({{account}})",
       "description": "Заметки",
       "location": "Место",
       "participants": "Участники",
