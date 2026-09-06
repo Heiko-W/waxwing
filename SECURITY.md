@@ -362,15 +362,18 @@ is one named package in a reviewable file, not a blanket permission.
 packages in `pnpm-lock.yaml` is reported. Automated *fix PRs* are deliberately **off**, and
 `.github/dependabot.yml` still does not watch npm — that file's reasoning is about a bot opening
 lockfile PRs that get merged unread, which is an argument against unattended UPDATES, not against
-being told. Fixes are applied by hand; six currently sit as `overrides` in `pnpm-workspace.yaml`,
+being told. Fixes are applied by hand; eight currently sit as `overrides` in `pnpm-workspace.yaml`,
 each with the parent's declared range written next to it.
 
 **Limits.** Alerts are not a scan of what actually ships: they match the lockfile, so a
 build-time-only package counts the same as one in the bundle, and the triage of which is which is
-a person's job. One alert is open on purpose — esbuild `GHSA-g7r4-m6w7-qqqr`, a Windows-only path
-traversal in esbuild's own dev server, unreachable here (vite serves; CI is `ubuntu-latest`) and
-unfixable without breaking `tsup@8.5.1`'s declared `^0.27.0`. It stays visible rather than
-dismissed.
+a person's job. **As of 2026-09-06 there are none open.** The esbuild advisory
+(`GHSA-g7r4-m6w7-qqqr`) that this section used to record as a deliberate exception is closed: the
+override to 0.28.1 leaves `tsup@8.5.1`'s declared `^0.27.0`, which is why it was refused before, but
+vite — the toolchain that builds the shipped bundle — accepts `^0.27.0 || ^0.28.0` and develops
+against 0.28. `pnpm build:libs` on 0.28.2 emits byte-identical output and the full gate passes, so
+the semver contract it steps outside of is one nothing in this repository depends on. Nothing has
+been dismissed.
 
 ---
 

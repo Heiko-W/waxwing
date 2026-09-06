@@ -263,6 +263,25 @@ test.describe('S-1 — being told that something was shared', () => {
 
     const inbox = page.getByRole('treeitem', { name: /Inbox/ }).first()
     await expect(inbox).toBeVisible({ timeout: SYNC_BUDGET_MS })
+    /*
+     * Wait for the rail to come to REST before taking the baseline, not merely for the first row to
+     * be visible. This suite signs in with two delegated accounts, so there are THREE Inbox rows
+     * (measured: alice at y=93, the shared ones at y=389 and y=481) and their sections arrive one
+     * sync pass after another — each one moving the rows above it.
+     *
+     * Without this the baseline is a value from the middle of that settling. It failed exactly once,
+     * in a full `pnpm gate` where the read and write suites had run first and left the machine
+     * loaded: `before` came out as **224**, which is not where any of the three rows ends up, and
+     * the comparison then reported a 131 px "jump" that was the rail finishing its build. Four
+     * isolated re-runs and a whole-suite re-run were green, which is what this class of race looks
+     * like — the same lesson as B59 and B46: a measurement is only safe once the thing being
+     * measured has arrived.
+     */
+    await expect(async () => {
+      const first = (await inbox.boundingBox())?.y
+      await page.waitForTimeout(250)
+      expect((await inbox.boundingBox())?.y).toBe(first)
+    }).toPass({ timeout: SYNC_BUDGET_MS })
     const before = await inbox.boundingBox()
     expect(before, 'no folder row to measure').not.toBeNull()
 
