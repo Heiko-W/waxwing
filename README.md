@@ -69,7 +69,7 @@ you can check what you are upgrading to:
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing                       # arrived intact
 gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
-  --source-ref refs/tags/v0.24.1                               # built here, from THAT TAG
+  --source-ref refs/tags/v0.25.0                               # built here, from THAT TAG
 ```
 
 `--ignore-missing` because `SHA256SUMS` lists all three artefacts and you downloaded one;
@@ -105,7 +105,7 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.24.1 — feature-complete, and deliberately not 1.0 yet.**
+**v0.25.0 — feature-complete, and deliberately not 1.0 yet.**
 
 Every planned work package is done and the release gate is signed off: 5 952 unit tests, 20
 integration tests against a live Stalwart, and 255 end-to-end tests across the **seven** Playwright
@@ -113,7 +113,22 @@ suites the gate runs. The seventh is WebKit, which used to run beside the gate r
 see below. Performance and accessibility are measured rather than asserted — the numbers are in the
 [implementation plan](docs/implementation-plan.md).
 
-**v0.24.1 closes every open dependency advisory, including one that had been held open.** Seven
+**v0.25.0 draws every account's calendars in one grid.** A shared or group calendar used to be
+reachable one account at a time — an entry in the rail, and the whole screen switched to it. That is
+the wrong shape for a calendar: the question a shared calendar exists to answer is "when are we all
+free", and a screen showing one account at a time cannot answer it. Now every calendar-serving
+account is in the same month, week and agenda, each calendar with its own section in the rail, its
+own tick and its own colour
+([ADR-047](docs/adr/047-the-calendar-merges-accounts-the-rails-do-not.md)).
+
+Two consequences worth naming. **The tick is this device's decision now, not the account's** — it
+used to write the server's `isVisible`, which is impossible on a calendar shared with you read-only,
+so half the rows had a tick box that could not be ticked. And **events wear their calendar's
+colour**, including calendars the server left without one: Stalwart's default calendar has no
+colour, so "leave colourless calendars neutral" would have drawn both accounts in the same chip —
+the one thing the merged grid exists to prevent.
+
+**v0.24.1 closed every open dependency advisory, including one that had been held open.** Seven
 alerts, six of them high, all in build- and test-time packages — the shipped bundle is byte-for-byte
 the same size. The esbuild one had been documented as a deliberate exception since 2026-08-18
 because the fix steps outside `tsup`'s declared range; `tsup` has not moved, but `vite` — the
