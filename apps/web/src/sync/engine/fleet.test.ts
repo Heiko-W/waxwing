@@ -361,8 +361,10 @@ function engineDeps(opts: {
   }
 }
 
-const primary = (id: string): FleetAccount => ({ id, name: id, isPrimary: true })
-const shared = (id: string): FleetAccount => ({ id, name: id, isPrimary: false })
+const primary = (id: string): FleetAccount => ({ id, name: id, isPrimary: true, syncMail: true })
+const shared = (id: string): FleetAccount => ({ id, name: id, isPrimary: false, syncMail: true })
+/** A delegated account that shares only its contacts/calendar (S-4) — no mail legs. */
+const pimOnly = (id: string): FleetAccount => ({ id, name: id, isPrimary: false, syncMail: false })
 
 /** The registry record the production host writes — replicated so registry assertions are real. */
 const recordFor = (account: FleetAccount): AccountRecord => ({
@@ -674,9 +676,11 @@ describe('startEngineFleet — per-account publication (M4.4 Etappe 4)', () => {
     deps: FleetDeps
     published: [string, SyncEngine | null][]
     order: string[]
+    specs: EngineSpec[]
   } {
     const published: [string, SyncEngine | null][] = []
     const order: string[] = []
+    const specs: EngineSpec[] = []
     const stubEngine = (id: string) =>
       ({
         start() {
@@ -687,8 +691,12 @@ describe('startEngineFleet — per-account publication (M4.4 Etappe 4)', () => {
     return {
       published,
       order,
+      specs,
       deps: {
-        createEngine: (spec) => stubEngine(spec.account.id),
+        createEngine: (spec) => {
+          specs.push(spec)
+          return stubEngine(spec.account.id)
+        },
         createPushMux: (): PushMux => ({ handle: () => new FakePush(), closeAll() {} }),
         setActive: () => {},
         publish: (accountId, engine) => {
@@ -710,6 +718,27 @@ describe('startEngineFleet — per-account publication (M4.4 Etappe 4)', () => {
     const engines = published.map(([, engine]) => engine)
     expect(new Set(engines).size).toBe(3)
     expect(engines.every((engine) => engine !== null)).toBe(true)
+  })
+
+  it('runs a contacts-only account like any other shared account, minus the mail (S-4)', () => {
+    /*
+     * The fleet does not decide WHICH legs an engine runs — the spec carries that (`syncMail`), and
+     * `engine.pim.test.ts` proves it reaches the round-trips. What matters here is that such an
+     * account is a full fleet citizen: its own leader lock, the shared push mux, a registry entry
+     * and a published handle. Without the handle, `getEngineFor` answers `null` and every watch the
+     * contacts and calendar rails register is silently dropped — which is the failure S-4 shipped.
+     */
+    const { deps, published, specs } = recordingDeps()
+
+    startEngineFleet([primary('acc1'), pimOnly('acc2')], deps)
+
+    expect(published.map(([id]) => id)).toEqual(['acc1', 'acc2'])
+    const pim = specs.find((spec) => spec.account.id === 'acc2')
+    expect(pim?.account.syncMail).toBe(false)
+    expect(pim?.lockName).toBe(`${SYNC_LOCK}:acc2`)
+    // It counts as a shared account, so the primary joins the mux rather than opening its own SSE
+    // channel — one connection for the user, not one per account.
+    expect(specs.find((spec) => spec.account.id === 'acc1')?.createPush).toBeDefined()
   })
 
   it('publishes an engine BEFORE starting it, so a click at first paint is not dropped', () => {

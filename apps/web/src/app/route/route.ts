@@ -259,8 +259,11 @@ export const FILES_PATH = '/files'
 export const CALENDAR_PATH = '/calendar'
 
 /** `/calendar`, or `/calendar/2026-08-20` for a specific day (M5.6). */
-export function calendarPath(isoDate?: string): string {
-  return isoDate === undefined ? CALENDAR_PATH : `${CALENDAR_PATH}/${isoDate}`
+export function calendarPath(isoDate?: string, accountId?: string): string {
+  const suffix = accountId === undefined ? '' : `?${ACCOUNT_PARAM}=${encodeURIComponent(accountId)}`
+  return isoDate === undefined
+    ? `${CALENDAR_PATH}${suffix}`
+    : `${CALENDAR_PATH}/${isoDate}${suffix}`
 }
 
 /**
@@ -268,10 +271,20 @@ export function calendarPath(isoDate?: string): string {
  * {@link mailPath}: `/contacts`, `/contacts/:bookId`, `/contacts/:bookId/:cardId`. A card with no book
  * is addressed in the all-books scope, `/contacts/~all/:cardId` ({@link CONTACTS_ALL_BOOKS}) — it used
  * to drop the card id and return `/contacts`, i.e. the page the reader was already on.
+ *
+ * `accountId` qualifies the route with `?account=` exactly like {@link mailPath}: JMAP book and card
+ * ids are per-account and short, so a book id that names one thing in a delegated account names
+ * something else in the user's own (the same collision ADR-018 documents for mailboxes). Without the
+ * qualifier a delegated book's link would reload into the reader's own account — where the id very
+ * likely names a real, different book. `undefined` (or the primary id, which the vet accepts) means
+ * the user's own account, so every existing link keeps its meaning.
  */
-export function contactsPath(bookId?: string, cardId?: string): string {
+export function contactsPath(bookId?: string, cardId?: string, accountId?: string): string {
+  const suffix = accountId === undefined ? '' : `?${ACCOUNT_PARAM}=${encodeURIComponent(accountId)}`
   if (cardId === undefined) {
-    return bookId === undefined ? CONTACTS_PATH : `${CONTACTS_PATH}/${bookId}`
+    return bookId === undefined
+      ? `${CONTACTS_PATH}${suffix}`
+      : `${CONTACTS_PATH}/${bookId}${suffix}`
   }
-  return `${CONTACTS_PATH}/${bookId ?? CONTACTS_ALL_BOOKS}/${cardId}`
+  return `${CONTACTS_PATH}/${bookId ?? CONTACTS_ALL_BOOKS}/${cardId}${suffix}`
 }

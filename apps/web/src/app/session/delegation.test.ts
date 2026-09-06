@@ -39,6 +39,7 @@ const access = (over: Partial<AreaAccess>): AreaAccess => ({
   mail: 'granted',
   contacts: 'granted',
   files: 'granted',
+  calendar: 'granted',
   ...over,
 })
 
@@ -72,11 +73,34 @@ describe('a shared account that only shares contacts', () => {
     expect(delegatedAccountsFor(session(denied), 'files').map((a) => a.id)).toEqual(['d'])
   })
 
-  it('AND NO SYNC ENGINE STARTS FOR IT', () => {
-    // `fleetAccounts` is what `SyncEngineHost` hands `startEngineFleet`; one entry per engine. The
-    // account is shared, it is in the session, it advertises mail — and it is not here.
-    expect(fleetAccounts(session(derived)).map((account) => account.id)).toEqual(['b'])
+  it('AND NO MAIL SYNC RUNS FOR IT', () => {
+    /*
+     * This assertion used to read "and no sync engine starts for it", and that was right for as
+     * long as an engine meant mail. It is now the narrower — and still load-bearing — claim: the
+     * account gets an engine, because the contacts rail S-4 added reads its books out of the
+     * replica and only an engine writes there, but that engine runs NO mail legs.
+     *
+     * The original hazard is unchanged and still pinned below: an engine whose every `Mailbox/get`
+     * answers `forbidden` must not be started as a MAIL engine. `syncMail: false` is what says so,
+     * and `engine.pim.test.ts` proves the flag actually reaches the round-trips.
+     */
+    const fleet = fleetAccounts(session(derived))
+    expect(fleet.map((account) => account.id)).toEqual(['b', 'd'])
+    expect(fleet.map((account) => account.syncMail)).toEqual([true, false])
+    // Unchanged: the account is still not a MAIL account, which is what the sidebar reads.
     expect(secondaryMailAccounts(session(derived))).toEqual([])
+  })
+
+  it('starts nothing at all for an account that serves no area', () => {
+    // The other half of the rule: an engine is warranted by something to sync. An account the
+    // server refuses in every area is a session entry and nothing more — starting an engine for it
+    // would be a leader lock, a push subscription and a retry loop over four `forbidden`s.
+    const nothing = deriveDelegation(
+      ALICE,
+      [CAROL],
+      new Map([['d', access({ mail: 'denied', contacts: 'denied', calendar: 'denied' })]]),
+    )
+    expect(fleetAccounts(session(nothing)).map((account) => account.id)).toEqual(['b'])
   })
 
   it('is still reachable in the area it really shares', () => {

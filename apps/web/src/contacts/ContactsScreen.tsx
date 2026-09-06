@@ -16,18 +16,31 @@
 
 import type { Id } from '@waxwing/jmap'
 import { ChevronLeft, Import, PanelLeft, Plus } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  lazy,
+  type ReactNode,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useTranslation } from 'react-i18next'
-import { contactsPath, useNavigate, useRoute } from '../app/route'
+import { ACCOUNT_PARAM, contactsPath, useNavigate, useRoute } from '../app/route'
+import { delegatedAccountsFor } from '../app/session/accounts'
+import { useSessionOptional } from '../app/session/context'
 import { computePaneLayout, useLayoutTier } from '../app/shell/layout'
 import { ScreenBar } from '../app/shell/ScreenBar'
 import shellStyles from '../app/shell/shell.module.css'
 import {
   type AddressBookRow,
   type ContactCardRow,
+  ReplicaProvider,
   useAddressBooks,
   useContactCard,
   useContactCards,
+  useReplicaOptional,
 } from '../sync'
 import { Button, IconButton, SplitPane } from '../ui'
 import { AddressBookList } from './AddressBookList'
@@ -81,7 +94,51 @@ function pickTargetBook(
 
 type EditorMode = 'create' | 'edit' | null
 
-export function ContactsScreen() {
+interface ContactsContentProps {
+  /** The signed-in user's own account id (session). */
+  readonly ownAccountId: Id | null
+  /** The account the screen ACTS in — own, or a delegated `?account=` one (S-4). */
+  readonly actingAccountId: Id | null
+}
+
+/**
+ * The contacts screen (S-4 wrapper). Decides which account the screen acts in — the user's own by
+ * default, or a delegated account named by `?account=` — and scopes the whole screen to it through a
+ * nested {@link ReplicaProvider}, the same way `ActiveAccountScope` scopes the mail panes. With
+ * nothing shared there is nothing to scope: the content renders without the extra provider, so the
+ * single-account path stays as it was.
+ */
+export function ContactsScreen(): ReactNode {
+  const connected = useSessionOptional()
+  const route = useRoute()
+  const ownAccountId = connected?.accountId ?? null
+  const sharedAccounts = useMemo(
+    () => (connected === null ? [] : delegatedAccountsFor(connected, 'contacts')),
+    [connected],
+  )
+  /* B37's vetting, contacts-shaped: only an account the server actually serves `contacts` for may be
+     named by the route; anything else (stale, hostile, or simply from a mail link) falls back to the
+     user's own account. */
+  const actingAccountId = useMemo(() => {
+    if (ownAccountId === null) return null
+    const fromRoute = route.search.get(ACCOUNT_PARAM)
+    return fromRoute !== null && sharedAccounts.some((account) => account.id === fromRoute)
+      ? fromRoute
+      : ownAccountId
+  }, [ownAccountId, route.search, sharedAccounts])
+  const replica = useReplicaOptional()
+  const content = <ContactsContent ownAccountId={ownAccountId} actingAccountId={actingAccountId} />
+  if (replica === null || actingAccountId === null || actingAccountId === ownAccountId) {
+    return content
+  }
+  return (
+    <ReplicaProvider accountId={actingAccountId} db={replica.db}>
+      {content}
+    </ReplicaProvider>
+  )
+}
+
+function ContactsContent({ ownAccountId, actingAccountId }: ContactsContentProps) {
   const { t } = useTranslation()
   const tier = useLayoutTier()
   const route = useRoute()
@@ -89,6 +146,16 @@ export function ContactsScreen() {
 
   const bookId = route.params.bookId
   const cardId = route.params.cardId
+
+  /*
+   * S-4: while the screen is acting in a delegated account, every link this screen builds must keep
+   * that account on the route (a bare `/contacts/...` would reload into the user's own account — the
+   * ADR-018 collision), and writes are withheld (see `canEditSelected`/`targetBook`): the write path
+   * dispatches through the ACTING account's engine, and an engine exists only for mail-capable
+   * accounts, so an offer that can only fail or write nowhere is worse than none.
+   */
+  const visitingDelegated = actingAccountId !== null && actingAccountId !== ownAccountId
+  const pathAccount = visitingDelegated && actingAccountId !== null ? actingAccountId : undefined
 
   const books = useAddressBooks()
   const selectedCard = useContactCard(cardId ?? '')
@@ -148,9 +215,9 @@ export function ContactsScreen() {
     [selectedGroup, cardsByUid],
   )
 
-  const canEditSelected = cardIsWritable(selectedCard, books)
-  const canEditGroup = cardIsWritable(selectedGroup, books)
-  const targetBook = pickTargetBook(bookId, books)
+  const canEditSelected = !visitingDelegated && cardIsWritable(selectedCard, books)
+  const canEditGroup = !visitingDelegated && cardIsWritable(selectedGroup, books)
+  const targetBook = visitingDelegated ? undefined : pickTargetBook(bookId, books)
   const editing = editor !== null || groupEditor !== null
 
   // The currently visible list — the export scope for the toolbar's Export (FR-CON-06): the selected
@@ -189,9 +256,9 @@ export function ContactsScreen() {
       // The book the reader is IN, not the book the card went into. They differ only in "All
       // Contacts", where the card is filed in the default book but the list the reader is looking at
       // shows it too — so there is no reason to move them out of it.
-      navigate(contactsPath(bookId, newCardId))
+      navigate(contactsPath(bookId, newCardId, pathAccount))
     },
-    [actions, navigate, bookId],
+    [actions, navigate, bookId, pathAccount],
   )
 
   // Swap the creation id for the server id as soon as the acknowledged card appears in the replica.
@@ -208,8 +275,8 @@ export function ContactsScreen() {
     )
     if (landed === undefined) return
     setPendingCreate(null)
-    navigate(contactsPath(bookId, landed.id), { replace: true })
-  }, [pendingCreate, allCards, cardId, bookId, navigate])
+    navigate(contactsPath(bookId, landed.id, pathAccount), { replace: true })
+  }, [pendingCreate, allCards, cardId, bookId, pathAccount, navigate])
 
   const onGroupSubmit = useCallback(
     async (submit: GroupFormSubmit): Promise<void> => {
@@ -446,7 +513,7 @@ export function ContactsScreen() {
           ? {
               onDelete: () => {
                 actions.remove(cardId)
-                navigate(contactsPath(bookId))
+                navigate(contactsPath(bookId, undefined, pathAccount))
               },
             }
           : {})}
@@ -462,7 +529,10 @@ export function ContactsScreen() {
     >
       {singleDetail && !editing && (
         <div className={styles.paneToolbar}>
-          <Button variant="ghost" onClick={() => navigate(contactsPath(bookId))}>
+          <Button
+            variant="ghost"
+            onClick={() => navigate(contactsPath(bookId, undefined, pathAccount))}
+          >
             <ChevronLeft aria-hidden="true" />
             {t('contacts.detail.back')}
           </Button>
@@ -527,7 +597,7 @@ export function ContactsScreen() {
             existingCards={allCards}
             exportCards={exportCards}
             exportFilenameStem={exportStem}
-            allowImport={ioMode === 'full'}
+            allowImport={ioMode === 'full' && !visitingDelegated}
             defaultBookId={targetBook?.id}
             createCards={actions.createMany}
           />

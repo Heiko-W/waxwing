@@ -49,6 +49,8 @@ function session(accountId: string): ConnectedSession {
     accountId,
     username: 'me@example.test',
     accounts: [{ id: accountId, name: 'Me', isPrimary: true }],
+    // Real sessions always carry it; `fleetAccounts` reads it for the PIM-only tail (S-4/ADR-046).
+    delegated: [],
   } as unknown as ConnectedSession
 }
 

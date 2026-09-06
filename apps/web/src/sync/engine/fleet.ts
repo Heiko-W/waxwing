@@ -44,11 +44,21 @@ import type { SyncEngine, SyncEngineDeps } from './engine'
 import { SYNC_LOCK } from './leader'
 import type { EngineStatus } from './types'
 
-/** A mail account the fleet runs an engine for; `isPrimary` marks the user's own account. */
+/** An account the fleet runs an engine for; `isPrimary` marks the user's own account. */
 export interface FleetAccount {
   readonly id: Id
   readonly name: string
   readonly isPrimary: boolean
+  /**
+   * Whether this account's engine syncs MAIL (S-4). `false` for a delegated account that shares
+   * only its contacts or its calendar: `Mailbox/get` on one of those answers `forbidden`, and since
+   * the mail legs open the delta block, an unguarded pass dies there and never reaches the contacts
+   * or calendar legs — which is why such an account's rail section could only ever be empty.
+   *
+   * The primary and every mail-capable delegated account are `true`, so this changes nothing for
+   * them.
+   */
+  readonly syncMail: boolean
 }
 
 /**
