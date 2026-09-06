@@ -156,6 +156,15 @@ const UNRESOLVED: EventIdentity = { writeId: null, series: false }
 
 /** An event placed on the timeline, ready to sort and group. */
 export interface PlacedEvent {
+  /**
+   * The account the event lives in (#79).
+   *
+   * REQUIRED, and not merely for completeness: the merged calendar draws several accounts into one
+   * grid, and JMAP event and calendar ids are per-account and short (ADR-018) — two accounts meet
+   * on `c1` routinely. Without this, a row could not say which client to open it with, which
+   * calendar's colour it wears, or whether two chips with the same id are one event or two.
+   */
+  readonly accountId: Id
   readonly event: CalendarEvent
   /** See {@link EventIdentity.writeId}. Never `event.id` unless the server said the two agree. */
   readonly writeId: Id | null
@@ -541,6 +550,7 @@ const SERVER_OWNED = ['id', 'created', 'updated', 'isOrigin', 'baseEventId', 'me
 /** Places one event on the timeline. */
 export function placeEvent(
   event: CalendarEvent,
+  accountId: Id,
   identity: EventIdentity = UNRESOLVED,
 ): PlacedEvent {
   const allDay = event.showWithoutTime === true
@@ -561,7 +571,15 @@ export function placeEvent(
       : allDay
         ? addDays(startOfDay(new Date(startsAt)), durationToWholeDays(event.duration)).getTime()
         : startsAt + durationToMs(event.duration)
-  return { event, writeId: identity.writeId, series: identity.series, startsAt, endsAt, allDay }
+  return {
+    accountId,
+    event,
+    writeId: identity.writeId,
+    series: identity.series,
+    startsAt,
+    endsAt,
+    allDay,
+  }
 }
 
 /**
@@ -807,7 +825,9 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
       return (
         responses
           .get(occurrences)
-          .list.map((event: CalendarEvent) => placeEvent(event, resolveIdentity(event, index)))
+          .list.map((event: CalendarEvent) =>
+            placeEvent(event, accountId, resolveIdentity(event, index)),
+          )
           // An event whose start could not be read is dropped rather than sorted to 1970, where it
           // would appear at the top of every view for ever.
           .filter((placed: PlacedEvent) => placed.startsAt !== null)

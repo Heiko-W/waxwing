@@ -1924,6 +1924,7 @@
       "durationInvalid": "1 ile {{max}} dakika arasında bir süre girin.",
       "zoneNote": "Saatler {{zone}} saat diliminde",
       "calendar": "Takvim",
+      "calendarInAccount": "{{calendar}} ({{account}})",
       "description": "Notlar",
       "location": "Yer",
       "participants": "Katılımcılar",

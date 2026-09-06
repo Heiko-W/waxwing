@@ -1976,6 +1976,7 @@
       "durationInvalid": "Введіть тривалість від 1 до {{max}} хвилин.",
       "zoneNote": "Час у зоні {{zone}}",
       "calendar": "Календар",
+      "calendarInAccount": "{{calendar}} ({{account}})",
       "description": "Нотатки",
       "location": "Місце",
       "participants": "Учасники",

@@ -36,6 +36,7 @@ import {
   fileNodesForAccount,
   fileNodesForParent,
   getCalendarQueryCache,
+  getCalendarShown,
   getContactQueryCache,
   getFileTreeState,
   identitiesForAccount,
@@ -348,6 +349,97 @@ export function useCalendarWindow(key: string): CalendarWindow | null | undefine
       empty: row.syncedAt === 0,
     }
   }, [context?.db, context?.accountId, key])
+}
+
+/**
+ * The calendars of SEVERAL accounts at once (#79) — `Map<accountId, rows>`.
+ *
+ * ONE hook rather than one per account, and that is a React constraint rather than a preference:
+ * the merged view reads a set of accounts that changes with the session, and `accountIds.map(id =>
+ * useCalendarsFor(id))` would call a hook inside a loop. The alternative the mail rail uses — a
+ * `ReplicaProvider` per account, each with its own subtree (`AccountTrees`) — works when the
+ * accounts render as SEPARATE sections, and this view deliberately does not: it merges them into
+ * one grid.
+ *
+ * The replica is a single database keyed by account (ADR-018), so reading N accounts is N indexed
+ * reads on one connection, not N subscriptions.
+ *
+ * `accountIds` is joined for the dependency because a caller building the array inline would
+ * otherwise re-key the query on every render — the same reason `useCalendarEvents` joins its ids.
+ */
+export function useCalendarsForAccounts(
+  accountIds: readonly Id[],
+): ReadonlyMap<Id, CalendarRow[]> | undefined {
+  const context = useReplicaOptional()
+  const key = accountIds.join(',')
+  return useLiveQuery<ReadonlyMap<Id, CalendarRow[]> | undefined>(async () => {
+    if (context === null) return undefined
+    const out = new Map<Id, CalendarRow[]>()
+    for (const accountId of key === '' ? [] : key.split(',')) {
+      out.set(accountId, await calendarsForAccount(context.db, accountId))
+    }
+    return out
+  }, [context?.db, key])
+}
+
+/**
+ * One watched window per account (#79) — `Map<accountId, window | null>`, with the same three-way
+ * meaning per entry that {@link useCalendarWindow} documents.
+ *
+ * A KEY PER ACCOUNT, not one shared key, and that is not a generalisation for its own sake: the
+ * window key hashes the FILTER (`canonicalCalendarQueryKey`), the filter names the calendars, and
+ * calendar ids are per-account. Two accounts asked for the same month therefore have different
+ * keys, and a single-key version of this hook would read one account's window under another
+ * account's key — finding nothing, for ever, on every account but the first.
+ */
+export function useCalendarWindowsFor(
+  sources: readonly { readonly accountId: Id; readonly key: string }[],
+): ReadonlyMap<Id, CalendarWindow | null> | undefined {
+  const context = useReplicaOptional()
+  // Serialised for the dependency: the caller rebuilds this array every render.
+  const spec = sources.map((source) => `${source.accountId}\u0000${source.key}`).join('\u0001')
+  return useLiveQuery<ReadonlyMap<Id, CalendarWindow | null> | undefined>(async () => {
+    if (context === null || spec === '') return undefined
+    const { db } = context
+    const out = new Map<Id, CalendarWindow | null>()
+    for (const pair of spec.split('\u0001')) {
+      const [accountId, key] = pair.split('\u0000')
+      if (accountId === undefined || key === undefined || key === '') continue
+      const row = await getCalendarQueryCache(db, accountId, key)
+      out.set(
+        accountId,
+        row === undefined
+          ? null
+          : {
+              occurrences: await calendarEventsByIds(db, accountId, row.ids),
+              objects: await calendarEventsByIds(db, accountId, row.objectIds),
+              syncedAt: row.syncedAt,
+              empty: row.syncedAt === 0,
+            },
+      )
+    }
+    return out
+  }, [context?.db, spec])
+}
+
+/**
+ * The reader's show/hide decisions for several accounts' calendars (#79) —
+ * `Map<accountId, { [calendarId]: boolean }>`. An account with no decisions yet maps to `{}`, which
+ * means "every calendar as the server left it".
+ */
+export function useCalendarShownFor(
+  accountIds: readonly Id[],
+): ReadonlyMap<Id, Record<Id, boolean>> | undefined {
+  const context = useReplicaOptional()
+  const ids = accountIds.join(',')
+  return useLiveQuery<ReadonlyMap<Id, Record<Id, boolean>> | undefined>(async () => {
+    if (context === null) return undefined
+    const out = new Map<Id, Record<Id, boolean>>()
+    for (const accountId of ids === '' ? [] : ids.split(',')) {
+      out.set(accountId, await getCalendarShown(context.db, accountId))
+    }
+    return out
+  }, [context?.db, ids])
 }
 
 // ── Files (D-4) ───────────────────────────────────────────────────────────────────────────────

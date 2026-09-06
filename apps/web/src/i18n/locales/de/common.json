@@ -1924,6 +1924,7 @@
       "durationInvalid": "Geben Sie eine Dauer zwischen 1 und {{max}} Minuten an.",
       "zoneNote": "Zeiten in {{zone}}",
       "calendar": "Kalender",
+      "calendarInAccount": "{{calendar}} ({{account}})",
       "description": "Notizen",
       "location": "Ort",
       "participants": "Teilnehmer",

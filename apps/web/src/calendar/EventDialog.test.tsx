@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Calendar, CalendarEvent } from '@waxwing/jmap'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import EventDialog, { parseDurationMinutes } from './EventDialog'
+import EventDialog, { type CalendarChoice, parseDurationMinutes } from './EventDialog'
 import { newParticipantRow } from './event-participants'
 
 /**
@@ -16,7 +16,20 @@ import { newParticipantRow } from './event-participants'
  * and were shown nowhere.
  */
 
-const CALENDAR = { id: 'c1', name: 'Work', isDefault: true } as unknown as Calendar
+const CALENDAR = {
+  id: 'c1',
+  name: 'Work',
+  isDefault: true,
+  myRights: { mayWriteAll: true },
+} as unknown as Calendar
+
+/** One offered calendar (#79): the picker takes account-scoped entries, never bare calendars. */
+const CHOICE: CalendarChoice = {
+  accountId: 'a1',
+  calendar: CALENDAR,
+  accountName: null,
+  writable: true,
+}
 
 const EXISTING = {
   id: '0',
@@ -33,7 +46,7 @@ function renderDialog(over: Partial<React.ComponentProps<typeof EventDialog>> = 
     <EventDialog
       event={null}
       defaultDate={new Date(2026, 7, 20, 9, 0)}
-      calendars={[CALENDAR]}
+      calendars={[CHOICE]}
       busy={false}
       onCancel={() => {}}
       onSubmit={onSubmit}

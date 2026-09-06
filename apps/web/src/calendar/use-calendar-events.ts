@@ -20,9 +20,9 @@
  */
 
 import type { Id } from '@waxwing/jmap'
-import { useCallback, useEffect, useMemo } from 'react'
-import { canonicalCalendarQueryKey, useCalendarWindow } from '../sync'
-import { useAccountEngine } from '../sync/engine'
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
+import { canonicalCalendarQueryKey, useCalendarWindowsFor } from '../sync'
+import { getEngineEpoch, getEngineFor, subscribeEngines } from '../sync/engine'
 import {
   calendarFilter,
   indexObjects,
@@ -56,83 +56,153 @@ export interface CalendarEventsState {
 
 const NO_REFRESH = async (): Promise<void> => {}
 
+/** One account's contribution to the merged month (#79). */
+export interface CalendarSource {
+  readonly accountId: Id
+  /**
+   * The calendars to draw from this account. Same three meanings as before, now per account:
+   * `null` — the list has not arrived (watch nothing; a filter naming no calendar asks for
+   * EVERYTHING), `[]` — every calendar of this account is switched off, non-empty — those.
+   */
+  readonly calendarIds: readonly Id[] | null
+}
+
 /**
- * Watch one month window and render it from the replica.
+ * Watch one month across SEVERAL accounts and render it from the replica (#79).
  *
- * `calendarIds` carries the same three meanings the online `eventsInRange` gave it, and all three
- * are used: `null` is "the calendar list has not arrived yet" (watch nothing — a filter naming no
- * calendar asks for EVERYTHING), an EMPTY list is "every calendar is switched off" (an empty month,
- * with no query), and a non-empty list is those calendars.
+ * Was single-account until #79 and is now the merged read: a team member wants their own
+ * appointments and the group's in one week view, not a switch between two screens that each hide
+ * half the answer. One source per account, each with its own calendars, its own window key, its own
+ * engine — merged here, in start order.
+ *
+ * The parts that had to become per-account, each for a reason that would otherwise be a silent bug:
+ *  - **the window key**, because it hashes the filter and the filter names calendars, which are
+ *    per-account ids (ADR-018). One key across accounts reads the wrong rows.
+ *  - **the engine**, because a watch registered on the wrong engine syncs the wrong account —
+ *    `getEngineFor(accountId)` answers `null` rather than the primary for exactly that reason.
+ *  - **`placeEvent`'s account stamp**, because two accounts routinely meet on `c1`, and a chip has
+ *    to know which client opens it.
+ *
+ * The single-account case is this with one source, and it behaves exactly as it did.
  */
 export function useCalendarEvents(
+  sources: readonly CalendarSource[],
   fromMs: number,
   toMs: number,
-  calendarIds: readonly Id[] | null,
 ): CalendarEventsState {
-  const engine = useAccountEngine()
-  /**
-   * The calendar ids as ONE string, and the memo below depends on that rather than on the array.
-   *
-   * `visibleCalendarIds` builds a fresh array on every render of the calendar list, so an array
-   * dependency would re-key the watch continuously: unwatch, re-watch, re-materialize, repeat. A
-   * comma join is safe as an identity — a JMAP id is a restricted charset that cannot contain one.
-   * `null` (the list has not arrived) stays distinct from `''` (nothing is switched on).
+  /*
+   * Serialised for every dependency below. The caller rebuilds `sources` on each render (it comes
+   * out of a `.map` over the visible calendars), so an array dependency would unwatch and re-watch
+   * continuously — the same reason the single-account version joined its ids, one level up.
    */
-  const idKey = calendarIds === null ? null : calendarIds.join(',')
+  const sourceKey = sources
+    .map((source) => `${source.accountId}\u0000${source.calendarIds?.join(',') ?? '\u0002'}`)
+    .join('\u0001')
 
-  const spec = useMemo(() => {
-    if (idKey === null || idKey === '') return null
-    return { filter: calendarFilter(new Date(fromMs), new Date(toMs), idKey.split(',')) }
-  }, [fromMs, toMs, idKey])
+  /** `{accountId, spec, key}` per account that has something to ask for; `null` ids ⇒ skipped. */
+  const specs = useMemo(() => {
+    if (sourceKey === '') return []
+    return sourceKey
+      .split('\u0001')
+      .map((entry) => {
+        const [accountId, ids] = entry.split('\u0000')
+        if (accountId === undefined || ids === undefined) return null
+        // `\u0002` is "not arrived yet", `''` is "all switched off" — neither is a query.
+        if (ids === '\u0002' || ids === '') return null
+        const spec = { filter: calendarFilter(new Date(fromMs), new Date(toMs), ids.split(',')) }
+        return {
+          accountId,
+          spec,
+          key: canonicalCalendarQueryKey({ ...spec, expandRecurrences: true }),
+        }
+      })
+      .flatMap((entry) => (entry === null ? [] : [entry]))
+  }, [sourceKey, fromMs, toMs])
 
-  const key = useMemo(
-    () => (spec === null ? '' : canonicalCalendarQueryKey({ ...spec, expandRecurrences: true })),
-    [spec],
+  /**
+   * Every account's list has arrived (or there are no accounts). Until then the screen is loading —
+   * conflating that with "no events" is what flashes an empty month over a populated one.
+   */
+  const allListsArrived = useMemo(
+    () =>
+      sourceKey === '' ||
+      sourceKey.split('\u0001').every((entry) => !entry.endsWith('\u0000\u0002')),
+    [sourceKey],
   )
 
-  useEffect(() => {
-    if (engine === null || spec === null) return
-    const watched = engine.watchCalendarQuery(spec)
-    return () => engine.unwatchCalendarQuery(watched)
-  }, [engine, spec])
+  // The engines, re-read when the fleet changes (an account gained or lost mid-session).
+  const engineEpoch = useSyncExternalStore(subscribeEngines, getEngineEpoch, () => 0)
 
-  const window = useCalendarWindow(key)
+  /* `engineEpoch` is the intended re-watch TRIGGER rather than a value the effect reads:
+     `getEngineFor` reaches into a module registry, so an account that gained an engine
+     mid-session (a share accepted, a second tab signing in) would otherwise never have its
+     window watched at all. */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `engineEpoch` is the re-watch trigger for `getEngineFor`, which reads a module registry the linter cannot see.
+  useEffect(() => {
+    const watched = specs.flatMap((entry) => {
+      const engine = getEngineFor(entry.accountId)
+      return engine === null ? [] : [{ engine, id: engine.watchCalendarQuery(entry.spec) }]
+    })
+    return () => {
+      for (const entry of watched) entry.engine.unwatchCalendarQuery(entry.id)
+    }
+  }, [specs, engineEpoch])
+
+  const windows = useCalendarWindowsFor(specs)
 
   const refresh = useCallback(async () => {
-    if (engine === null || spec === null) return
-    await engine.refreshCalendarWindow(spec)
-  }, [engine, spec])
+    await Promise.all(
+      specs.map(async (entry) => {
+        const engine = getEngineFor(entry.accountId)
+        if (engine === null) return
+        await engine.refreshCalendarWindow(entry.spec)
+      }),
+    )
+  }, [specs])
 
   return useMemo(() => {
-    // No calendars known yet ⇒ still loading; every calendar switched off ⇒ a real, empty answer.
-    if (spec === null) {
-      return idKey === null
-        ? { events: undefined, syncedAt: 0, neverSynced: false, refresh: NO_REFRESH }
-        : { events: [], syncedAt: 0, neverSynced: false, refresh: NO_REFRESH }
+    // Nothing to ask for. "No calendars known yet" is a spinner; "every calendar off" is an answer.
+    if (specs.length === 0) {
+      return allListsArrived
+        ? { events: [], syncedAt: 0, neverSynced: false, refresh: NO_REFRESH }
+        : { events: undefined, syncedAt: 0, neverSynced: false, refresh: NO_REFRESH }
     }
-    // `undefined` (query in flight) and `null` (asked for, not answered yet) are both "wait".
-    if (window === undefined || window === null) {
+    if (windows === undefined) {
+      return { events: undefined, syncedAt: 0, neverSynced: false, refresh }
+    }
+    // One account still unanswered keeps the whole grid waiting: half a month drawn as if it were
+    // the whole month is worse than a spinner — it reads as "you are free" when you are not.
+    if (specs.some((entry) => (windows.get(entry.accountId) ?? null) === null)) {
       return { events: undefined, syncedAt: 0, neverSynced: false, refresh }
     }
 
-    const objects = window.objects.flatMap((row) => (row === undefined ? [] : [row.event]))
-    // Best-effort, exactly as online: a window whose identity half never arrived still draws. Every
-    // occurrence then reads as unresolved — legible, not editable — and the screen says which.
-    let index = indexObjects([])
-    try {
-      index = indexObjects(objects)
-    } catch {
-      /* an unreadable identity half costs editing, never the month */
+    const events: PlacedEvent[] = []
+    let syncedAt = 0
+    let neverSynced = false
+    for (const entry of specs) {
+      const window = windows.get(entry.accountId)
+      if (window === undefined || window === null) continue
+      const objects = window.objects.flatMap((row) => (row === undefined ? [] : [row.event]))
+      // Best-effort, exactly as online: a window whose identity half never arrived still draws.
+      let index = indexObjects([])
+      try {
+        index = indexObjects(objects)
+      } catch {
+        /* an unreadable identity half costs editing, never the month */
+      }
+      for (const row of window.occurrences) {
+        if (row === undefined) continue
+        const placed = placeEvent(row.event, entry.accountId, resolveIdentity(row.event, index))
+        // An event whose start could not be read is dropped rather than sorted to 1970, where it
+        // would appear at the top of every view for ever.
+        if (placed.startsAt !== null) events.push(placed)
+      }
+      // The OLDEST answer is the honest one for a merged grid: "as of" must not claim the freshness
+      // of the newest account while another has not been read for an hour.
+      syncedAt = syncedAt === 0 ? window.syncedAt : Math.min(syncedAt, window.syncedAt)
+      if (window.empty) neverSynced = true
     }
-
-    const events = window.occurrences
-      .flatMap((row) => (row === undefined ? [] : [row.event]))
-      .map((event) => placeEvent(event, resolveIdentity(event, index)))
-      // An event whose start could not be read is dropped rather than sorted to 1970, where it would
-      // appear at the top of every view for ever.
-      .filter((placed) => placed.startsAt !== null)
-      .sort((a, b) => (a.startsAt as number) - (b.startsAt as number))
-
-    return { events, syncedAt: window.syncedAt, neverSynced: window.empty, refresh }
-  }, [window, spec, idKey, refresh])
+    events.sort((a, b) => (a.startsAt as number) - (b.startsAt as number))
+    return { events, syncedAt, neverSynced, refresh }
+  }, [specs, windows, allListsArrived, refresh])
 }

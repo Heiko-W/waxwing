@@ -49,6 +49,7 @@ function calendar(over: Partial<Calendar> = {}): Calendar {
 function renderList(calendars: readonly Calendar[], onShare?: (calendar: Calendar) => void) {
   return render(
     <CalendarList
+      accountId="a"
       calendars={calendars}
       canCreate={false}
       disabled={false}
@@ -94,6 +95,7 @@ describe('who is offered the share control', () => {
   it('goes quiet while a write is in flight, like every other control on the row', () => {
     render(
       <CalendarList
+        accountId="a"
         calendars={[calendar()]}
         canCreate={false}
         disabled

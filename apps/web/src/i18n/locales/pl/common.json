@@ -1976,6 +1976,7 @@
       "durationInvalid": "Podaj czas trwania od 1 do {{max}} minut.",
       "zoneNote": "Godziny w strefie {{zone}}",
       "calendar": "Kalendarz",
+      "calendarInAccount": "{{calendar}} ({{account}})",
       "description": "Notatki",
       "location": "Miejsce",
       "participants": "Uczestnicy",

@@ -23,12 +23,33 @@
  *
  * **The calendars themselves are managed here too (K-1), and that changes what the grid asks for.**
  * The list of calendars is a rail from 40em up and a screen-high sheet below it, reached from the
- * same view menu that already carries Today. Ticking one off writes `isVisible` to the SERVER and
- * then re-fetches the month naming only the calendars that are on — `eventsInRange`'s third
- * parameter, which had existed since M5.6 with no caller. So the two loads are no longer
- * independent: the calendars are fetched first and the events depend on their answer, which costs
- * one extra round trip on the first paint and none afterwards. The alternative, filtering the drawn
- * list locally, looks the same on this screen and is a lie on the phone.
+ * same view menu that already carries Today. Ticking one off re-fetches the month naming only the
+ * calendars that are on — `eventsInRange`'s third parameter, which had existed since M5.6 with no
+ * caller. So the two loads are no longer independent: the calendars are fetched first and the
+ * events depend on their answer, which costs one extra round trip on the first paint and none
+ * afterwards. The alternative, filtering the drawn list locally, looks the same on this screen and
+ * is a lie on the phone.
+ *
+ * **ONE grid for EVERY account (#79), which is the largest change this screen has had.** Until now
+ * it drew one account at a time and `?account=` switched between them, so a team member could see
+ * their own week or the group's week and never both — which is the one question a shared calendar
+ * exists to answer ("am I free when the group is busy?"). The screen now reads the reader's own
+ * account plus every delegated account whose `calendar` area the server serves, merges the months in
+ * `useCalendarEvents`, and draws them in a single grid with a colour and a tick per calendar. Three
+ * consequences run through the whole file, and each of them was a defect waiting to happen:
+ *
+ *  - **One client per ACCOUNT, never one client.** JMAP ids are per-account and short (ADR-018):
+ *    two accounts meet on `c1` and on `e17` routinely. Every write therefore looks up the client of
+ *    the account the object came from — `placed.accountId` for an event, the row's account for a
+ *    calendar — and a single "acting" client would have sent half of them to the wrong server-side
+ *    account, where they would either fail or, worse, hit somebody else's object of the same id.
+ *  - **Ticking is LOCAL.** `isVisible` is a property of the calendar object, so hiding used to be a
+ *    write — impossible on a calendar shared read-only, which is exactly what this screen now shows.
+ *    The decision lives in the replica's local prefs (`setCalendarShown`), with the server's
+ *    `isVisible` as its starting value.
+ *  - **`?account=` no longer narrows anything.** It marks the named account's section in the rail
+ *    and switches its calendars back ON, so the share card's Open still leads somewhere true — it
+ *    reveals the shared calendar inside the merged grid instead of hiding every other one.
  */
 
 import type { Calendar, Id, Principal } from '@waxwing/jmap'
@@ -56,7 +77,7 @@ import {
   useState,
 } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ACCOUNT_PARAM, calendarPath, Link, useNavigate, useRoute } from '../app/route'
+import { ACCOUNT_PARAM, calendarPath, useNavigate, useRoute } from '../app/route'
 import { delegatedAccountsFor } from '../app/session/accounts'
 import { useSessionOptional } from '../app/session/context'
 import type { DelegatedAccount } from '../app/session/types'
@@ -65,12 +86,18 @@ import { ScreenBar } from '../app/shell/ScreenBar'
 import shellStyles from '../app/shell/shell.module.css'
 import { useOnline } from '../app/use-online'
 import { formatDate, formatRelativeTime } from '../i18n/formatters'
+import type { CalendarSharingClient } from '../sharing/calendar-share-client'
 import { makeCalendarSharingClient } from '../sharing/calendar-share-client'
 import { IncomingShares } from '../sharing/IncomingShares'
 import type { ShareAnnouncement } from '../sharing/incoming'
 import { currentUserPrincipalId, principalLabel } from '../sharing/principals'
 import { useIncomingShares } from '../sharing/use-incoming-shares'
-import { ReplicaProvider, useCalendars, useReplicaOptional } from '../sync'
+import {
+  setCalendarShown,
+  useCalendarShownFor,
+  useCalendarsForAccounts,
+  useReplicaOptional,
+} from '../sync'
 import { RECONNECT_DEBOUNCE_MS } from '../sync/engine'
 import { Button, Dialog, EmptyState, IconButton, Menu, Select, Spinner, useToast } from '../ui'
 import { type BusyPeriod, toBusyPeriods } from './availability'
@@ -85,9 +112,12 @@ import {
   refusalReason,
   refuseEdit,
 } from './calendar-client'
+import { calendarColor } from './calendar-colour'
+import type { CalendarChoice } from './EventDialog'
+import { chipColor, rowColor } from './event-color'
 import { DEFAULT_MAX_PARTICIPANTS, ownAddresses } from './event-participants'
 import type { EditScope } from './event-recurrence'
-import { useCalendarEvents } from './use-calendar-events'
+import { type CalendarSource, useCalendarEvents } from './use-calendar-events'
 
 const EventDialog = lazy(() => import('./EventDialog'))
 /*
@@ -103,7 +133,13 @@ const IcsImportDialog = lazy(() => import('./IcsImportDialog'))
 const CalendarShareDialog = lazy(() => import('../sharing/CalendarShareDialog'))
 
 import CalendarDialog, { CalendarDeleteDialog } from './CalendarDialog'
-import { CalendarList, visibleCalendarIds } from './CalendarList'
+import {
+  CalendarList,
+  isCalendarShown,
+  mayWriteEvents,
+  NO_OVERRIDES,
+  visibleCalendarIds,
+} from './CalendarList'
 import { EventFacts } from './EventFacts'
 import { zoneDiffersFromLocal } from './jscalendar-time'
 import {
@@ -143,107 +179,26 @@ const VIEW_LABELS: Record<View, (t: TFunction) => string> = {
  */
 const MAX_CHIPS = 3
 
+/** No local show/hide decisions — a module constant, so it is not a fresh object per render. */
+const NO_SHOWN: ReadonlyMap<Id, Record<Id, boolean>> = new Map()
+
 export interface CalendarPageProps {
-  /** Injected in tests; defaults to a client built from the live session. */
+  /**
+   * Injected in tests: the client for the reader's OWN account. Defaults to one built from the live
+   * session.
+   */
   readonly client?: CalendarClient
+  /**
+   * Injected in tests: a client per account (#79), for the paths where WHICH account a write went
+   * to is the assertion. Takes precedence over {@link client} for the accounts it names; every other
+   * account still falls back to the session.
+   */
+  readonly clients?: ReadonlyMap<Id, CalendarClient>
   /** Injected in tests so the grid is deterministic. */
   readonly today?: Date
 }
 
-interface CalendarContentProps extends CalendarPageProps {
-  /** The signed-in user's own account id (session). */
-  readonly ownAccountId: Id | null
-  /** The account the screen ACTS in — own, or a delegated `?account=` one (S-4b). */
-  readonly actingAccountId: Id | null
-}
-
-/**
- * The calendar screen (S-4b wrapper). Decides which account the screen acts in — the user's own by
- * default, or a delegated account named by `?account=` (a group the user belongs to, or an
- * individual calendar share) — and scopes the whole screen to it through a nested
- * {@link ReplicaProvider}, so the replica-backed events and the per-account live client agree on
- * whose calendars they draw. With nothing shared there is nothing to scope: the content renders
- * without the extra provider, and the single-account path stays as it was.
- */
 export default function CalendarPage(props: CalendarPageProps): ReactNode {
-  const connected = useSessionOptional()
-  const route = useRoute()
-  const ownAccountId = connected?.accountId ?? null
-  const sharedCalendarAccounts = useMemo(
-    () => (connected === null ? [] : delegatedAccountsFor(connected, 'calendar')),
-    [connected],
-  )
-  /* B37's vetting, calendar-shaped: only an account the server actually serves `Calendar/get` for
-     may be named by the route; anything else falls back to the user's own account. */
-  const actingAccountId = useMemo(() => {
-    if (ownAccountId === null) return null
-    const fromRoute = route.search.get(ACCOUNT_PARAM)
-    return fromRoute !== null && sharedCalendarAccounts.some((account) => account.id === fromRoute)
-      ? fromRoute
-      : ownAccountId
-  }, [ownAccountId, route.search, sharedCalendarAccounts])
-  const replica = useReplicaOptional()
-  const content = (
-    <CalendarContent {...props} ownAccountId={ownAccountId} actingAccountId={actingAccountId} />
-  )
-  if (replica === null || actingAccountId === null || actingAccountId === ownAccountId) {
-    return content
-  }
-  return (
-    <ReplicaProvider accountId={actingAccountId} db={replica.db}>
-      {content}
-    </ReplicaProvider>
-  )
-}
-
-/**
- * The account whose calendars the screen is showing (S-4b) — one compact entry per calendar-served
- * account, the own account first then each delegated/group one. Rendered in the rail AND in the
- * phone sheet, so a group's calendars are one click away on every viewport. `aria-current` marks
- * the acting account; `onNavigate` lets the phone sheet close itself after the switch.
- */
-function CalendarAccountNav({
-  ownAccountId,
-  ownName,
-  accounts,
-  actingAccountId,
-  onNavigate,
-}: {
-  readonly ownAccountId: Id
-  readonly ownName: string | null
-  readonly accounts: readonly DelegatedAccount[]
-  readonly actingAccountId: Id | null
-  readonly onNavigate?: () => void
-}): ReactNode {
-  return (
-    <ul className={styles.calendarAccounts}>
-      <li>
-        <Link
-          to={calendarPath()}
-          className={styles.calendarAccountLink}
-          {...(actingAccountId === ownAccountId ? { 'aria-current': 'page' as const } : {})}
-          {...(onNavigate !== undefined ? { onClick: onNavigate } : {})}
-        >
-          {ownName}
-        </Link>
-      </li>
-      {accounts.map((calendarAccount) => (
-        <li key={calendarAccount.id}>
-          <Link
-            to={calendarPath(undefined, calendarAccount.id)}
-            className={styles.calendarAccountLink}
-            {...(actingAccountId === calendarAccount.id ? { 'aria-current': 'page' as const } : {})}
-            {...(onNavigate !== undefined ? { onClick: onNavigate } : {})}
-          >
-            {calendarAccount.name}
-          </Link>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarContentProps) {
   const { t, i18n } = useTranslation()
   const route = useRoute()
   const navigate = useNavigate()
@@ -271,29 +226,20 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
    * screens that never did.
    */
   const online = useOnline()
-  /*
-   * The network's calendar answer, TAGGED with the account it answers about.
+  /**
+   * The network's calendar answers, KEYED by the account each one answers about (#79).
    *
-   * Without the tag the fetched list is a boolean "loaded" and would survive an account switch
-   * (S-4b): for the moment between the route change and the refetch, the rail would draw the OLD
-   * account's calendars while the screen already acts in the new one — and a tick in that window
-   * would write `isVisible` for an old-account id against the NEW account (the ADR-018 collision).
-   * A tagged answer only counts for the account it came from; a mid-flight answer that lands after
-   * a switch is simply ignored by the acting account and stays valid for the one it names.
+   * A map rather than a list plus a tag, and the difference is not cosmetic: the screen now draws
+   * several accounts at once, so "the list" was never one list. Keying by account also answers the
+   * question the old tag was invented for — a mid-flight answer landing after the account set
+   * changed writes into its own slot and is simply never read again if that account has gone.
+   *
+   * An entry that IS an empty array means "asked, and this account has none"; a missing entry means
+   * "not asked, or the request failed", which is where the replica's copy takes over.
    */
-  const [calendars, setCalendars] = useState<{
-    readonly accountId: Id | null
-    readonly list: Calendar[]
-  }>({
-    accountId: null,
-    list: [],
-  })
-  /*
-   * `calendarsLoaded` sits BESIDE the tag on purpose: the tag alone cannot tell "never arrived"
-   * from "arrived, and it is empty" (the initial tag equals the session-less account id), and the
-   * flag alone cannot tell the previous account's answer from the acting one's.
-   */
-  const [calendarsLoaded, setCalendarsLoaded] = useState(false)
+  const [networkCalendars, setNetworkCalendars] = useState<ReadonlyMap<Id, Calendar[]>>(
+    () => new Map(),
+  )
   /** `{ placed }` edits, `{ placed: null }` creates on `day`. */
   const [editing, setEditing] = useState<{ placed: PlacedEvent | null; day: Date } | null>(null)
   /** The day whose full event list is open (T8) — `null` when none is. */
@@ -309,12 +255,22 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
    * asked any more.
    */
   const [failed, setFailed] = useState(false)
-  /** `{ calendar }` edits, `{ calendar: null }` creates. */
-  const [editingCalendar, setEditingCalendar] = useState<{ calendar: Calendar | null } | null>(null)
+  /**
+   * `{ calendar }` edits, `{ calendar: null }` creates — and `accountId` says WHOSE (#79).
+   *
+   * The account rides along with every one of these because the save has to pick a client by it: a
+   * calendar id alone is `c1`, which two accounts both have (ADR-018).
+   */
+  const [editingCalendar, setEditingCalendar] = useState<{
+    accountId: Id
+    calendar: Calendar | null
+  } | null>(null)
   /** The calendar the reader asked to delete, and how many events go with it (`null` = counting). */
-  const [deleting, setDeleting] = useState<{ calendar: Calendar; count: number | null } | null>(
-    null,
-  )
+  const [deleting, setDeleting] = useState<{
+    accountId: Id
+    calendar: Calendar
+    count: number | null
+  } | null>(null)
   /** The calendar list on a phone, where there is no rail to put it in. */
   const [calendarsOpen, setCalendarsOpen] = useState(false)
   /**
@@ -330,23 +286,12 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
   /*
    * Incoming calendar shares (S-1, extended to this type by S-2).
    *
-   * Since S-4b the strip CAN open the card: the wrapper scopes the screen to the share's account
-   * (`?account=`), so an Open button now leads somewhere true — the account whose calendar was
-   * shared — instead of back to the reader's own calendars. The account is the announcement's
-   * `objectAccountId`, which the session lists by name; a card for the reader's OWN account (which
-   * the server does not send) would just open the plain calendar.
+   * Open still leads somewhere true, and since #79 somewhere BETTER: the shared account's calendars
+   * are already in this grid, so `?account=` no longer swaps the screen over to them — it points at
+   * the account, switches its calendars back on and marks its section in the
+   * rail. The account is the announcement's `objectAccountId`, which the session lists by name.
    */
   const incoming = useIncomingShares('Calendar')
-  const openSharedCalendar = useCallback(
-    (announcement: ShareAnnouncement): void => {
-      if (announcement.accountId === ownAccountId) {
-        navigate(calendarPath())
-        return
-      }
-      navigate(calendarPath(undefined, announcement.accountId))
-    },
-    [navigate, ownAccountId],
-  )
   /** The `.ics` import sheet (K-4). */
   const [importing, setImporting] = useState(false)
   /** The calendar whose share dialog is open (S-2), or `null`. */
@@ -364,11 +309,12 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
    * and the dialog beside it still says "Only you." A reader would conclude the grant was lost, and
    * grant it again.
    *
-   * Deriving from `calendars` by id means the dialog is a VIEW of the list rather than a copy of one
-   * of its rows, so every refresh reaches it. That is what the note on `onChanged` below always
-   * claimed was happening.
+   * Deriving from the calendar list by id means the dialog is a VIEW of the list rather than a copy
+   * of one of its rows, so every refresh reaches it. That is what the note on `onChanged` below
+   * always claimed was happening. The ACCOUNT rides along for the usual reason (#79): `c1` alone
+   * names two calendars once there are two accounts.
    */
-  const [sharingId, setSharingId] = useState<Id | null>(null)
+  const [sharingId, setSharingId] = useState<{ accountId: Id; calendarId: Id } | null>(null)
   /**
    * Whose availability is drawn behind the week grid (S-6) — a principal id, or `null` for nobody.
    *
@@ -396,21 +342,87 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
   const focus = useMemo(() => fromIsoDate(focusDay) ?? today, [focusDay, today])
 
   const injected = props.client
+  const injectedClients = props.clients
   const sessionClient = connected?.client ?? null
-  /* The acting account (S-4b): own, or the delegated `?account=` one the wrapper scoped us to. */
-  const accountId = actingAccountId
-  /*
-   * The account entries the rail offers (S-4b): the own account plus every delegated account whose
-   * `calendar` area the server serves — a group the user belongs to has no incoming share card, so
-   * this row is its only standing door. Names come from the session (data, not translations).
+  const replica = useReplicaOptional()
+
+  /**
+   * The reader's OWN account.
+   *
+   * The session first, the replica's scope second. The fallback is not decoration: a screen with a
+   * replica and no session is what every unit test of this file is, and before #79 the account it
+   * read came implicitly from the replica context anyway. Making that explicit is what lets the
+   * rest of the file speak in account ids instead of relying on whichever provider it sits under.
    */
-  const ownName =
-    ownAccountId === null
-      ? null
-      : (connected?.jmapSession?.accounts?.[ownAccountId]?.name ?? ownAccountId)
+  const ownAccountId = connected?.accountId ?? replica?.accountId ?? null
+  /*
+   * Every delegated account whose `calendar` area the server serves — a group the user belongs to
+   * has no incoming share card, so before #79 the rail's account row was its only standing door.
+   * Now its calendars are simply IN the rail, under the account's own name.
+   */
   const calendarAccounts = useMemo(
     () => (connected === null ? [] : delegatedAccountsFor(connected, 'calendar')),
     [connected],
+  )
+  /**
+   * Every account this screen draws, the reader's own FIRST (#79).
+   *
+   * The order is load-bearing in two places: the rail puts the own account's calendars above the
+   * sections, and the editor defaults a new event to the first writable calendar it is offered — so
+   * "first" has to mean "mine", or a stray click lands a private appointment on a group's calendar.
+   */
+  const accountIds = useMemo(
+    () => (ownAccountId === null ? [] : [ownAccountId, ...calendarAccounts.map((a) => a.id)]),
+    [ownAccountId, calendarAccounts],
+  )
+  /** `accountId → the name to show beside a calendar`; `null` for the own account (unmarked). */
+  const accountNames = useMemo<ReadonlyMap<Id, string | null>>(() => {
+    const names = new Map<Id, string | null>()
+    if (ownAccountId !== null) names.set(ownAccountId, null)
+    for (const account of calendarAccounts) names.set(account.id, account.name)
+    return names
+  }, [ownAccountId, calendarAccounts])
+
+  /**
+   * ONE CLIENT PER ACCOUNT — the heart of #79, and of ADR-018 (see the file header).
+   *
+   * Every write on this screen looks its client up in here by the account of the OBJECT it is
+   * writing, never by "the account the screen is in", because there is no longer such a thing. A
+   * single client would send a delete of the group's `e17` to the reader's own account, where `e17`
+   * is somebody else's lunch.
+   */
+  const clients = useMemo<ReadonlyMap<Id, CalendarClient>>(() => {
+    const built = new Map<Id, CalendarClient>()
+    for (const id of accountIds) {
+      const fromProps = injectedClients?.get(id) ?? (id === ownAccountId ? injected : undefined)
+      if (fromProps !== undefined) {
+        built.set(id, fromProps)
+        continue
+      }
+      if (sessionClient !== null) built.set(id, makeCalendarClient(sessionClient, id))
+    }
+    return built
+  }, [accountIds, injected, injectedClients, ownAccountId, sessionClient])
+
+  /** The client for one account, or `null` when the screen has none — never a fallback to another. */
+  const clientFor = useCallback(
+    (accountId: Id | null): CalendarClient | null =>
+      accountId === null ? null : (clients.get(accountId) ?? null),
+    [clients],
+  )
+  /** The own account's client: what the availability picker, the importer and the identities use. */
+  const ownClient = clientFor(ownAccountId)
+
+  /** The share card's Open — see the note on `incoming` above. */
+  const openSharedCalendar = useCallback(
+    (announcement: ShareAnnouncement): void => {
+      if (announcement.accountId === ownAccountId) {
+        navigate(calendarPath())
+        return
+      }
+      navigate(calendarPath(undefined, announcement.accountId))
+    },
+    [navigate, ownAccountId],
   )
 
   /**
@@ -418,23 +430,20 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
    *
    * Read rather than assumed so the editor refuses the 21st attendee here, with a sentence, instead
    * of letting the whole save come back `tooManyParticipants` after the reader has finished typing.
+   * Read for the account the EVENT is in (#79) — a group account may publish a different ceiling,
+   * and the reader is told the one that will actually refuse them.
    */
-  const maxParticipants = useMemo(() => {
-    const capability =
-      accountId === null
-        ? undefined
-        : (connected?.jmapSession?.accounts?.[accountId]?.accountCapabilities?.[
-            'urn:ietf:params:jmap:calendars'
-          ] as { maxParticipantsPerEvent?: number | null } | undefined)
-    return capability?.maxParticipantsPerEvent ?? DEFAULT_MAX_PARTICIPANTS
-  }, [connected, accountId])
-  const client = useMemo(
-    () =>
-      injected ??
-      (sessionClient === null || accountId === null
-        ? null
-        : makeCalendarClient(sessionClient, accountId)),
-    [injected, sessionClient, accountId],
+  const maxParticipantsFor = useCallback(
+    (accountId: Id | null): number => {
+      const capability =
+        accountId === null
+          ? undefined
+          : (connected?.jmapSession?.accounts?.[accountId]?.accountCapabilities?.[
+              'urn:ietf:params:jmap:calendars'
+            ] as { maxParticipantsPerEvent?: number | null } | undefined)
+      return capability?.maxParticipantsPerEvent ?? DEFAULT_MAX_PARTICIPANTS
+    },
+    [connected],
   )
 
   /**
@@ -454,7 +463,7 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
   }, [focus, locale])
 
   /**
-   * The calendar list, read the way the folder tree is: from the replica.
+   * The calendar lists of every account, read the way the folder tree is: from the replica (#79).
    *
    * The network read below still runs and still wins — it is how a calendar created on this device
    * appears before the next sweep. What changed is what happens when it does not answer: the
@@ -462,49 +471,168 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
    * that shows the events it already holds under their own names and one that shows nothing at all
    * because it does not know which calendars to ask for.
    */
-  const replicaCalendars = useCalendars()
+  const replicaCalendars = useCalendarsForAccounts(accountIds)
 
   /**
-   * What the rail draws and what the month filter names — the network's answer once it has one FOR
-   * THE ACTING ACCOUNT, the replica's until then (and forever, for an account the network never
-   * answered). `null` while neither has answered: `accountId: null` means "not loaded for anyone",
-   * a foreign tag means "loaded for another account", and only a matching tag is an ANSWER — so an
-   * empty list still means "this account has no calendars" and never "not known yet".
+   * What the rail draws and what the month filter names, PER ACCOUNT — the network's answer where
+   * there is one, the replica's otherwise. An account missing from this map has not answered at
+   * all; an account mapping to `[]` has answered "I have none", and the two must not be conflated
+   * (see `sources` below).
    */
-  const effectiveCalendars = useMemo<Calendar[] | null>(
+  const calendarsByAccount = useMemo<ReadonlyMap<Id, Calendar[]>>(() => {
+    const merged = new Map<Id, Calendar[]>()
+    for (const id of accountIds) {
+      const fromNetwork = networkCalendars.get(id)
+      if (fromNetwork !== undefined) {
+        merged.set(id, fromNetwork)
+        continue
+      }
+      const fromReplica = replicaCalendars?.get(id)
+      if (fromReplica !== undefined) merged.set(id, fromReplica)
+    }
+    return merged
+  }, [accountIds, networkCalendars, replicaCalendars])
+
+  /**
+   * The reader's own show/hide decisions, per account (#79).
+   *
+   * `undefined` means "not read yet" and the grid WAITS for it. Drawing before it lands would flash
+   * every event of a calendar the reader has switched off and then take them away again — the same
+   * lie the old `isVisible` filter was built to avoid, one layer down. With no replica at all there
+   * are no decisions and none can be taken, so an empty map is the complete answer rather than a
+   * pending one.
+   */
+  const storedShown = useCalendarShownFor(accountIds)
+  /*
+   * The ticks the reader has just clicked, before the replica has answered (#79).
+   *
+   * The stored decision is the truth, and it arrives about 50 ms after the click — measured against
+   * the fixture: `checked` is still the OLD value at t=0 and correct at t=50 ms. Without this the
+   * tick does not respond to the click at all, it responds to the database; on a slow device or a
+   * large replica that gap is long enough to look broken, and the reader clicks again. (It also
+   * fails Playwright's `uncheck()`, which is how it was found — the check verifies the state
+   * immediately after clicking, and that is exactly what a person does too.)
+   *
+   * Cleared per calendar as soon as the stored answer AGREES, so this never becomes a second source
+   * of truth: a write that fails leaves the stored value unchanged, the entry is dropped, and the
+   * tick goes back to what the replica says.
+   */
+  const [pendingShown, setPendingShown] = useState<ReadonlyMap<string, boolean>>(new Map())
+  const shownByAccount = useMemo(() => {
+    const stored = replica === null ? NO_SHOWN : storedShown
+    if (stored === undefined || pendingShown.size === 0) return stored
+    const merged = new Map(stored)
+    for (const [key, shown] of pendingShown) {
+      const [accountId, calendarId] = key.split('\u0000')
+      if (accountId === undefined || calendarId === undefined) continue
+      merged.set(accountId, { ...(merged.get(accountId) ?? {}), [calendarId]: shown })
+    }
+    return merged
+  }, [replica, storedShown, pendingShown])
+
+  // Drop each optimistic tick the moment the replica reports the same value.
+  useEffect(() => {
+    if (storedShown === undefined || pendingShown.size === 0) return
+    const settled = [...pendingShown].filter(([key, shown]) => {
+      const [accountId, calendarId] = key.split('\u0000')
+      if (accountId === undefined || calendarId === undefined) return true
+      return storedShown.get(accountId)?.[calendarId] === shown
+    })
+    if (settled.length === 0) return
+    setPendingShown((current) => {
+      const next = new Map(current)
+      for (const [key] of settled) next.delete(key)
+      return next
+    })
+  }, [storedShown, pendingShown])
+
+  /** The own account's calendars — the create button and the rail's unlabelled first section. */
+  const ownCalendars = ownAccountId === null ? [] : (calendarsByAccount.get(ownAccountId) ?? [])
+
+  /**
+   * Where a `.ics` may be imported to — the OWN account's writable calendars, and only those.
+   *
+   * Deliberately narrower than the editor's picker (#79). `CalendarEvent/parse` + the bulk create
+   * are one client's work, importing a hundred events into a group's calendar is not a thing anyone
+   * has asked for, and an importer that could aim anywhere would need a second account column in a
+   * dialog whose whole point is one file, one calendar, one press. If it is ever wanted it is a
+   * `CalendarChoice[]` away — the shape is already here.
+   */
+  const importableCalendars = ownCalendars.filter(mayWriteEvents)
+
+  /**
+   * One source per account: which calendars of it the merged month should ask for.
+   *
+   * `null` for an account whose list has not arrived, which `useCalendarEvents` reads as "watch
+   * nothing yet" — an EMPTY list is the different and equally real answer "every calendar of this
+   * account is switched off", and a filter naming no calendar at all would ask for everything.
+   */
+  const sources = useMemo<CalendarSource[]>(
     () =>
-      calendarsLoaded && calendars.accountId === accountId
-        ? calendars.list
-        : (replicaCalendars ?? null),
-    [calendars, calendarsLoaded, accountId, replicaCalendars],
+      accountIds.map((id) => {
+        const list = calendarsByAccount.get(id)
+        return {
+          accountId: id,
+          calendarIds:
+            list === undefined || shownByAccount === undefined
+              ? null
+              : visibleCalendarIds(list, shownByAccount.get(id) ?? NO_OVERRIDES),
+        }
+      }),
+    [accountIds, calendarsByAccount, shownByAccount],
+  )
+
+  /** The month, from the replica (K-8), merged across accounts (#79). This never fetches. */
+  const { events, syncedAt, neverSynced, refresh } = useCalendarEvents(sources, fromMs, toMs)
+
+  /**
+   * The colour an event's chip wears — its CALENDAR's, resolved through its own account (#79).
+   *
+   * Both halves of the lookup are needed and neither is enough: `calendarIds` is a set of ids that
+   * only mean anything inside one account (ADR-018), and `placed.accountId` is the account they
+   * mean it in. Looking the id up across the merged list would tint a group's event with the
+   * reader's own calendar of the same id — a wrong answer that looks exactly like a right one.
+   *
+   * `null` for a calendar this screen cannot resolve, and for one the server gave no colour: the
+   * chip then keeps its neutral surface. Inventing a colour for the second case would put a hue on
+   * the chip that the rail's own tick box does not have, so the legend would not match the grid.
+   */
+  const colorFor = useCallback(
+    (placed: PlacedEvent): string | null => {
+      const list = calendarsByAccount.get(placed.accountId)
+      if (list === undefined) return null
+      const ids = Object.keys(placed.event.calendarIds ?? {})
+      for (const calendar of list) {
+        // A calendar with no colour of its own still gets one — see `calendar-colour.ts`. Without
+        // that, the merged grid drew every account in the same neutral chip, which is the one thing
+        // it exists not to do.
+        if (ids.includes(calendar.id)) return calendarColor(placed.accountId, calendar)
+      }
+      return null
+    },
+    [calendarsByAccount],
   )
 
   /**
-   * `null` until the calendars are known; then the ids whose events to ask for.
+   * What the editor's calendar picker offers (#79).
    *
-   * The distinction matters: an EMPTY list is "every calendar is switched off" and must draw an
-   * empty month, while "not known yet" must not fetch at all — asking with no filter would draw
-   * every event for one paint and then take the hidden ones away again.
+   * Creating: every calendar of every account, own account first, each marked with the account it
+   * belongs to and with whether it may be written to. Editing: the calendars of the event's OWN
+   * account only — see `EventDialogProps.calendars` on why moving an event between accounts is not
+   * something a `<select>` may promise.
    */
-  const visibleIds = useMemo(
-    () => (effectiveCalendars === null ? null : visibleCalendarIds(effectiveCalendars)),
-    [effectiveCalendars],
-  )
-
-  /**
-   * What every SURFACE on this screen draws — the rail, the sheet, the import gate, the editor's
-   * calendar picker and the RSVP right.
-   *
-   * The replica fallback used to hang on the event query alone: those five read the network list,
-   * which stays empty when `listCalendars()` fails, so offline the reader saw a month full of
-   * events beside a rail saying "This account has no calendars" — and no legend for which colour
-   * was which (R-59). Writing stays blocked by `online` and `unavailableReason`, so drawing the
-   * replica's copy here adds no action that could fail.
-   */
-  const shownCalendars = effectiveCalendars ?? []
-
-  /** The month, from the replica (K-8). The engine keeps it fresh; this never fetches. */
-  const { events, syncedAt, neverSynced, refresh } = useCalendarEvents(fromMs, toMs, visibleIds)
+  const editorChoices = useMemo<CalendarChoice[]>(() => {
+    const editedIn = editing?.placed?.accountId ?? null
+    const offered = editedIn === null ? accountIds : [editedIn]
+    return offered.flatMap((id) =>
+      (calendarsByAccount.get(id) ?? []).map((calendar) => ({
+        accountId: id,
+        calendar,
+        accountName: accountNames.get(id) ?? null,
+        writable: mayWriteEvents(calendar),
+      })),
+    )
+  }, [editing, accountIds, calendarsByAccount, accountNames])
 
   /**
    * Whether the availability layer has anywhere to go (S-6).
@@ -542,36 +670,61 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
   /**
    * The share seam (S-2) — `Calendar/set … shareWith`, classified separately from the editor's write.
    *
-   * `null` when there is no session, which is what removes the affordance from every row rather
-   * than letting one open a dialog that cannot save.
+   * One per account for the same reason the calendar clients are (#79): `Calendar/set` names an
+   * `accountId`, and the "self" principal excluded from the picker is that account's, not the
+   * reader's own. Empty when there is no session, which is what removes the affordance from every
+   * row rather than letting one open a dialog that cannot save.
    */
-  const sharingClient = useMemo(
-    () =>
-      sessionClient === null || accountId === null
-        ? null
-        : makeCalendarSharingClient(
-            sessionClient,
-            accountId,
-            currentUserPrincipalId(connected?.jmapSession ?? null, accountId),
-          ),
-    [sessionClient, accountId, connected],
-  )
-
-  const loadCalendars = useCallback(async () => {
-    if (client === null) return
-    try {
-      // Tagged with the account the answer came from (null = no session, the test/single case); a
-      // switch mid-flight makes this answer land for the OLD account, where it is kept and ignored
-      // by the new acting account. `null === null` still matches, so the tag costs the session-less
-      // path nothing.
-      const list = await client.listCalendars()
-      setCalendars({ accountId, list })
-      setCalendarsLoaded(true)
-      setFailed(false)
-    } catch {
-      setFailed(true)
+  const sharingClients = useMemo(() => {
+    const built = new Map<Id, ReturnType<typeof makeCalendarSharingClient>>()
+    if (sessionClient === null) return built
+    for (const id of accountIds) {
+      built.set(
+        id,
+        makeCalendarSharingClient(
+          sessionClient,
+          id,
+          currentUserPrincipalId(connected?.jmapSession ?? null, id),
+        ),
+      )
     }
-  }, [client, accountId])
+    return built
+  }, [sessionClient, accountIds, connected])
+
+  /**
+   * Ask every account for its calendars.
+   *
+   * One request per account rather than one for "the" account (#79): they are separate JMAP calls
+   * on separate `accountId`s and there is no way to batch them into one answer this screen could
+   * read. A refusal is per account too — one group whose `Calendar/get` fails must not blank the
+   * reader's own rail, so a failed account simply keeps whatever it had (usually the replica's
+   * copy) and the "could not refresh" line is raised once for the lot.
+   */
+  const loadCalendars = useCallback(async () => {
+    if (clients.size === 0) return
+    const answers = await Promise.all(
+      [...clients].map(async ([id, calendarClient]) => {
+        try {
+          return [id, await calendarClient.listCalendars()] as const
+        } catch {
+          return [id, null] as const
+        }
+      }),
+    )
+    setNetworkCalendars((current) => {
+      const next = new Map(current)
+      for (const [id, list] of answers) {
+        if (list !== null) next.set(id, list)
+      }
+      // An account the session no longer serves loses its list here, so a stale rail section cannot
+      // outlive the grant that produced it.
+      for (const id of [...next.keys()]) {
+        if (!clients.has(id)) next.delete(id)
+      }
+      return next
+    })
+    setFailed(answers.some(([, list]) => list === null))
+  }, [clients])
 
   useEffect(() => {
     void loadCalendars()
@@ -606,26 +759,42 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
     }
   }, [online, loadCalendars])
 
-  /** The share dialog's subject, read from the LIVE list — see {@link sharingId}. */
+  /** The share dialog's subject, read from the LIVE list of its own account — see {@link sharingId}. */
   const sharing =
-    sharingId === null || calendars.accountId !== accountId
+    sharingId === null
       ? null
-      : (calendars.list.find((calendar) => calendar.id === sharingId) ?? null)
+      : ((networkCalendars
+          .get(sharingId.accountId)
+          ?.find((calendar) => calendar.id === sharingId.calendarId) ?? null) as Calendar | null)
 
+  /*
+   * The reader's calendar addresses (K-10), from EVERY account (#79).
+   *
+   * Per account rather than own-only because "which of these participants is me" has a different
+   * answer inside a group's calendar: the invitation there is addressed to the group, and an RSVP
+   * bar that only knows the reader's personal address would never appear on the one kind of event
+   * people actually get invited to. The addresses are unioned — they are only ever compared
+   * against, never written back.
+   */
   useEffect(() => {
-    if (client === null) return
+    if (clients.size === 0) return
     let live = true
-    void client
-      .listParticipantIdentities()
-      .then((identities) => {
-        if (live) setMyAddresses(ownAddresses(identities))
-      })
-      // Swallowed: see `myAddresses`. Nothing on this screen depends on it except one optional bar.
-      .catch(() => undefined)
+    void Promise.all(
+      [...clients.values()].map(async (calendarClient) => {
+        try {
+          return ownAddresses(await calendarClient.listParticipantIdentities())
+        } catch {
+          // Swallowed: see `myAddresses`. Nothing here depends on it except one optional bar.
+          return []
+        }
+      }),
+    ).then((lists) => {
+      if (live) setMyAddresses([...new Set(lists.flat())])
+    })
     return () => {
       live = false
     }
-  }, [client])
+  }, [clients])
 
   /**
    * Try everything the screen needs again — the calendar list AND the month.
@@ -638,6 +807,55 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
     await loadCalendars()
     await refresh()
   }, [loadCalendars, refresh])
+
+  /**
+   * What `?account=` still means, now that it cannot narrow the screen (#79).
+   *
+   * Before the merged grid it scoped the whole screen; the share card's Open used it, and so do any
+   * links a reader has bookmarked. Making it inert would have left that button doing visibly
+   * nothing — the worst of the three options — so it kept the job it was built for and lost the
+   * mechanism: it POINTS at an account rather than switching to one. The section is marked with
+   * `aria-current`, and the effect below switches that account's calendars back on, so
+   * "Open" reliably ends with the shared calendar's events on the grid.
+   *
+   * B37's vetting is unchanged: only an account the server actually serves may be named, and
+   * anything else is ignored rather than trusted.
+   */
+  const requestedAccount = route.search.get(ACCOUNT_PARAM)
+  const highlightedAccount =
+    requestedAccount !== null && calendarAccounts.some((account) => account.id === requestedAccount)
+      ? requestedAccount
+      : null
+
+  /*
+   * Switching the named account's calendars back on, ONCE per navigation.
+   *
+   * The ref is what makes it a reaction to the click rather than a standing policy: without it the
+   * effect would re-tick every calendar of that account each time the list re-rendered, and a reader
+   * who unticked one while the parameter was still in the URL could never keep it unticked. It also
+   * waits for the list AND the stored decisions, because "switch on what is off" cannot be answered
+   * before either has arrived.
+   */
+  const revealed = useRef<Id | null>(null)
+  useEffect(() => {
+    if (replica === null || highlightedAccount === null) return
+    if (revealed.current === highlightedAccount) return
+    const list = calendarsByAccount.get(highlightedAccount)
+    if (list === undefined || shownByAccount === undefined) return
+    const local = shownByAccount.get(highlightedAccount) ?? NO_OVERRIDES
+    revealed.current = highlightedAccount
+    const hidden = list.filter((calendar) => !isCalendarShown(calendar, local))
+    if (hidden.length === 0) return
+    void (async () => {
+      // Sequentially rather than `Promise.all`: every one of these is a read-modify-write of the
+      // SAME prefs row, so concurrent ones would drop each other's calendars.
+      for (const calendar of hidden) {
+        await setCalendarShown(replica.db, highlightedAccount, calendar.id, true)
+      }
+      // Swallowed for the same reason every other pref write here is: a decision that could not be
+      // stored costs this reader one tick, never the screen.
+    })().catch(() => undefined)
+  }, [replica, highlightedAccount, calendarsByAccount, shownByAccount])
 
   /*
    * The directory, fetched at most once and only when the picker is actually on screen.
@@ -652,9 +870,9 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
    * the honest outcome of a server that will not answer.
    */
   useEffect(() => {
-    if (client === null || !showAvailability || people !== null) return
+    if (ownClient === null || !showAvailability || people !== null) return
     let live = true
-    void client
+    void ownClient
       .listPrincipals()
       .then((list) => {
         if (live) setPeople(list)
@@ -665,7 +883,7 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
     return () => {
       live = false
     }
-  }, [client, showAvailability, people])
+  }, [ownClient, showAvailability, people])
 
   /*
    * The busy periods for the chosen person, over the week on screen.
@@ -679,14 +897,14 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
    * which would be the claim that the person is free all week.
    */
   useEffect(() => {
-    if (client === null || availabilityOf === null || !showAvailability) {
+    if (ownClient === null || availabilityOf === null || !showAvailability) {
       setBusy(null)
       setBusyPending(false)
       return
     }
     let live = true
     setBusyPending(true)
-    void client
+    void ownClient
       .getAvailability(availabilityOf, new Date(weekFromMs), new Date(weekToMs))
       .then((list) => {
         if (!live) return
@@ -701,7 +919,7 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
     return () => {
       live = false
     }
-  }, [client, availabilityOf, showAvailability, weekFromMs, weekToMs])
+  }, [ownClient, availabilityOf, showAvailability, weekFromMs, weekToMs])
 
   const goto = useCallback(
     (date: Date): void => navigate(calendarPath(toIsoDate(date))),
@@ -771,8 +989,15 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
   }
 
   const deleteEvent = async (target: PlacedEvent, scope: EditScope = 'all'): Promise<void> => {
-    // Narrowed here rather than relying on the early return below, which comes later in the body.
-    const writer = client
+    /*
+     * The client of the event's OWN account (#79), narrowed here rather than relying on the early
+     * return below, which comes later in the body.
+     *
+     * `target.accountId` and not "the current account": in a merged grid the chip under the pointer
+     * may belong to any of them, and `e17` exists in all of them. A destroy aimed at the wrong
+     * account either fails — the lucky case — or deletes a different event with the same short id.
+     */
+    const writer = clientFor(target.accountId)
     if (writer === null) return
     /*
      * Removing ONE occurrence of a series is an `excluded` override on the master, not a delete —
@@ -817,28 +1042,37 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
   }
 
   /**
-   * Ticking a calendar on or off.
+   * Ticking a calendar on or off — a LOCAL decision since #79, not a `Calendar/set`.
    *
-   * Optimistic, and the optimism is not decoration: the write is followed by a fresh range query,
-   * so waiting for the round trip before moving the tick would leave the reader looking at a
-   * checkbox that ignored them for as long as the server took. On refusal the tick goes back where
-   * it was and the toast says why — the list is re-read rather than patched back, so the screen
-   * ends up agreeing with the server rather than with our guess about it.
+   * It used to write `isVisible` to the server, which was defensible while every calendar on screen
+   * belonged to the reader and is not defensible at all now that half of them may be somebody
+   * else's: `mayWriteAll` is false on a read-only share, so the tick box on those rows opened a
+   * request that came back refused, put the tick back, and raised a toast. The reader could not
+   * hide a calendar they had merely been shown.
+   *
+   * So the decision is stored in the replica's local prefs, per account and per calendar, with the
+   * server's `isVisible` as its starting value (see `repo.ts`). No optimistic patch is needed any
+   * more either: the live query is the state, so the tick moves as soon as the write lands and
+   * there is no round trip to hide.
    */
-  const toggleCalendar = async (calendar: Calendar, visible: boolean): Promise<void> => {
-    if (client === null) return
-    // The optimistic patch lives under the tag that made the row drawable in the first place — the
-    // acting account's own answer (S-4b).
-    setCalendars((current) => ({
-      ...current,
-      list: current.list.map((entry) =>
-        entry.id === calendar.id ? { ...entry, isVisible: visible } : entry,
-      ),
-    }))
+  const toggleCalendar = async (
+    accountId: Id,
+    calendar: Calendar,
+    shown: boolean,
+  ): Promise<void> => {
+    if (replica === null) return
+    const pendingKey = `${accountId}\u0000${calendar.id}`
+    setPendingShown((current) => new Map(current).set(pendingKey, shown))
     try {
-      await client.updateCalendar(calendar.id, { isVisible: visible })
+      await setCalendarShown(replica.db, accountId, calendar.id, shown)
     } catch (error) {
-      await loadCalendars()
+      // The stored value never changed, so drop the optimistic one rather than leaving the tick
+      // showing a decision the replica does not hold.
+      setPendingShown((current) => {
+        const next = new Map(current)
+        next.delete(pendingKey)
+        return next
+      })
       toast({
         tone: 'danger',
         title: t('calendar.calendars.toggleFailed'),
@@ -848,12 +1082,16 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
   }
 
   const saveCalendar = async (draft: CalendarDraft): Promise<void> => {
-    if (client === null || editingCalendar === null) return
+    if (editingCalendar === null) return
+    // The account the ROW came from (#79) — creating goes to whichever account's section the
+    // create button sits in, editing to the account the calendar is in.
+    const writer = clientFor(editingCalendar.accountId)
+    if (writer === null) return
     const target = editingCalendar.calendar
     setSaving(true)
     try {
-      if (target === null) await client.createCalendar(draft)
-      else await client.updateCalendar(target.id, draft)
+      if (target === null) await writer.createCalendar(draft)
+      else await writer.updateCalendar(target.id, draft)
       setEditingCalendar(null)
       await loadCalendars()
     } catch (error) {
@@ -874,14 +1112,19 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
    * menu click is immediate. Until it arrives the confirm button is out of reach — see
    * `CalendarDeleteDialog`: agreeing to lose an unknown number of events is not agreement.
    */
-  const askDelete = async (calendar: Calendar): Promise<void> => {
-    if (client === null) return
+  const askDelete = async (accountId: Id, calendar: Calendar): Promise<void> => {
+    const reader = clientFor(accountId)
+    if (reader === null) return
     setCalendarsOpen(false)
-    setDeleting({ calendar, count: null })
+    setDeleting({ accountId, calendar, count: null })
     try {
-      const count = await client.countEvents(calendar.id)
+      const count = await reader.countEvents(calendar.id)
       setDeleting((current) =>
-        current?.calendar.id === calendar.id ? { calendar, count } : current,
+        // Both halves of the identity (#79): the same calendar id in another account is a different
+        // dialog, and answering it with this count would name the wrong number of events.
+        current?.calendar.id === calendar.id && current.accountId === accountId
+          ? { accountId, calendar, count }
+          : current,
       )
     } catch {
       // A count we could not take must not become a zero. Nothing changes; the dialog keeps saying
@@ -890,10 +1133,12 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
   }
 
   const confirmDelete = async (): Promise<void> => {
-    if (client === null || deleting === null) return
+    if (deleting === null) return
+    const writer = clientFor(deleting.accountId)
+    if (writer === null) return
     setSaving(true)
     try {
-      await client.destroyCalendar(deleting.calendar.id)
+      await writer.destroyCalendar(deleting.calendar.id)
       setDeleting(null)
       await loadCalendars()
       toast({ title: t('calendar.calendars.deleted', { name: deleting.calendar.name }) })
@@ -908,7 +1153,13 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
     }
   }
 
-  if (client === null) {
+  /*
+   * No own account, or no client for it: there is nothing this screen can read or write. The
+   * DELEGATED accounts are deliberately not enough — without a session there is no way to have been
+   * granted one, and a screen showing somebody else's calendars and none of the reader's would be a
+   * stranger state than an empty one.
+   */
+  if (ownAccountId === null || ownClient === null) {
     return (
       <div className={styles.page}>
         <EmptyState icon={CalendarDays} title={t('calendar.signedOut')} />
@@ -1037,7 +1288,7 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
               },
               // Importing a file is rare and deliberate; it belongs in a menu on every viewport,
               // not beside the one control this screen uses constantly.
-              ...(online && shownCalendars.length > 0
+              ...(online && importableCalendars.length > 0
                 ? [
                     {
                       id: 'import',
@@ -1084,7 +1335,7 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
               label={t('calendar.import.open')}
               variant="ghost"
               size="sm"
-              disabled={shownCalendars.length === 0}
+              disabled={importableCalendars.length === 0}
               unavailableReason={online ? undefined : t('calendar.import.offline')}
               onClick={() => setImporting(true)}
             >
@@ -1123,25 +1374,27 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
       <div className={styles.body}>
         {tier !== 'phone' && (
           <aside className={styles.rail} aria-label={t('calendar.calendars.title')}>
-            {ownAccountId !== null && calendarAccounts.length > 0 && (
-              <CalendarAccountNav
-                ownAccountId={ownAccountId}
-                ownName={ownName}
-                accounts={calendarAccounts}
-                actingAccountId={accountId}
-              />
-            )}
-            <CalendarList
-              calendars={shownCalendars}
-              canCreate={mayCreateCalendar(connected?.jmapSession ?? null, accountId) && online}
-              disabled={saving || !online}
-              onToggle={(calendar, visible) => void toggleCalendar(calendar, visible)}
-              onCreate={() => setEditingCalendar({ calendar: null })}
-              onEdit={(calendar) => setEditingCalendar({ calendar })}
-              onDelete={(calendar) => void askDelete(calendar)}
-              {...(sharingClient === null || !online
+            <CalendarSections
+              ownAccountId={ownAccountId}
+              accounts={calendarAccounts}
+              calendarsByAccount={calendarsByAccount}
+              shownByAccount={shownByAccount}
+              highlightedAccount={highlightedAccount}
+              heading
+              canCreateOwn={
+                mayCreateCalendar(connected?.jmapSession ?? null, ownAccountId) && online
+              }
+              disabled={saving}
+              onToggle={(id, calendar, shown) => void toggleCalendar(id, calendar, shown)}
+              onCreate={() => setEditingCalendar({ accountId: ownAccountId, calendar: null })}
+              onEdit={(id, calendar) => setEditingCalendar({ accountId: id, calendar })}
+              onDelete={(id, calendar) => void askDelete(id, calendar)}
+              {...(!online
                 ? {}
-                : { onShare: (calendar: Calendar) => setSharingId(calendar.id) })}
+                : {
+                    onShare: (id: Id, calendar: Calendar) =>
+                      setSharingId({ accountId: id, calendarId: calendar.id }),
+                  })}
             />
             {/* The availability layer's control, under the list of layers it joins — a calendar is
                 "whose events are drawn", this is "whose free/busy is drawn behind them". */}
@@ -1230,6 +1483,7 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
                   byDay={byDay}
                   locale={locale}
                   focus={focus}
+                  colorFor={colorFor}
                   onPick={goto}
                   onExpand={setExpandedDay}
                   onOpen={openEvent}
@@ -1240,12 +1494,13 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
                   events={events}
                   today={today}
                   focus={focus}
+                  colorFor={colorFor}
                   onOpen={openEvent}
                   onPick={goto}
                   {...(busy === null || busyName === null ? {} : { busy, busyName })}
                 />
               ) : (
-                <AgendaView events={events} today={today} onOpen={openEvent} />
+                <AgendaView events={events} today={today} colorFor={colorFor} onOpen={openEvent} />
               )}
             </>
           )}
@@ -1256,6 +1511,7 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
         <DayDialog
           day={expandedDay}
           events={byDay.get(toIsoDate(expandedDay)) ?? []}
+          colorFor={colorFor}
           onClose={() => setExpandedDay(null)}
           onOpen={openEvent}
         />
@@ -1272,36 +1528,33 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
           title={t('calendar.calendars.title')}
         >
           <div className={styles.calendarSheet}>
-            {ownAccountId !== null && calendarAccounts.length > 0 && (
-              <CalendarAccountNav
-                ownAccountId={ownAccountId}
-                ownName={ownName}
-                accounts={calendarAccounts}
-                actingAccountId={accountId}
-                onNavigate={() => setCalendarsOpen(false)}
-              />
-            )}
-            <CalendarList
-              calendars={shownCalendars}
+            <CalendarSections
+              ownAccountId={ownAccountId}
+              accounts={calendarAccounts}
+              calendarsByAccount={calendarsByAccount}
+              shownByAccount={shownByAccount}
+              highlightedAccount={highlightedAccount}
               heading={false}
-              canCreate={mayCreateCalendar(connected?.jmapSession ?? null, accountId) && online}
-              disabled={saving || !online}
-              onToggle={(calendar, visible) => void toggleCalendar(calendar, visible)}
+              canCreateOwn={
+                mayCreateCalendar(connected?.jmapSession ?? null, ownAccountId) && online
+              }
+              disabled={saving}
+              onToggle={(id, calendar, shown) => void toggleCalendar(id, calendar, shown)}
               onCreate={() => {
                 setCalendarsOpen(false)
-                setEditingCalendar({ calendar: null })
+                setEditingCalendar({ accountId: ownAccountId, calendar: null })
               }}
-              onEdit={(calendar) => {
+              onEdit={(id, calendar) => {
                 setCalendarsOpen(false)
-                setEditingCalendar({ calendar })
+                setEditingCalendar({ accountId: id, calendar })
               }}
-              onDelete={(calendar) => void askDelete(calendar)}
-              {...(sharingClient === null || !online
+              onDelete={(id, calendar) => void askDelete(id, calendar)}
+              {...(!online
                 ? {}
                 : {
-                    onShare: (calendar: Calendar) => {
+                    onShare: (id: Id, calendar: Calendar) => {
                       setCalendarsOpen(false)
-                      setSharingId(calendar.id)
+                      setSharingId({ accountId: id, calendarId: calendar.id })
                     },
                   })}
             />
@@ -1319,22 +1572,26 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
         </Dialog>
       )}
 
-      {sharing !== null && sharingClient !== null && (
-        <Suspense fallback={null}>
-          <CalendarShareDialog
-            calendarId={sharing.id}
-            name={sharing.name}
-            // The map the last `Calendar/get` returned — `CALENDAR_PROPERTIES` names `shareWith`, so
-            // it is really here and the dialog needs no fetch of its own.
-            shareWith={sharing.shareWith}
-            client={sharingClient}
-            onClose={() => setSharingId(null)}
-            // Re-read, so the row's "shared" marker is the server's answer rather than this
-            // screen's guess — and so the dialog, which adopts the prop, shows what really landed.
-            onChanged={() => void loadCalendars()}
-          />
-        </Suspense>
-      )}
+      {sharing !== null &&
+        sharingId !== null &&
+        sharingClients.get(sharingId.accountId) !== undefined && (
+          <Suspense fallback={null}>
+            <CalendarShareDialog
+              calendarId={sharing.id}
+              name={sharing.name}
+              // The map the last `Calendar/get` returned — `CALENDAR_PROPERTIES` names `shareWith`, so
+              // it is really here and the dialog needs no fetch of its own.
+              shareWith={sharing.shareWith}
+              // The sharing client of the calendar's OWN account (#79): `Calendar/set … shareWith`
+              // names an account, and granting on the wrong one is the ADR-018 collision again.
+              client={sharingClients.get(sharingId.accountId) as CalendarSharingClient}
+              onClose={() => setSharingId(null)}
+              // Re-read, so the row's "shared" marker is the server's answer rather than this
+              // screen's guess — and so the dialog, which adopts the prop, shows what really landed.
+              onChanged={() => void loadCalendars()}
+            />
+          </Suspense>
+        )}
 
       {editingCalendar !== null && (
         <CalendarDialog
@@ -1358,8 +1615,8 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
       {importing && (
         <Suspense fallback={null}>
           <IcsImportDialog
-            client={client}
-            calendars={shownCalendars}
+            client={ownClient}
+            calendars={importableCalendars}
             onClose={() => setImporting(false)}
             onImported={() => {
               setImporting(false)
@@ -1387,23 +1644,37 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
             <EventDialog
               event={editing.placed?.event ?? null}
               defaultDate={editing.day}
-              calendars={shownCalendars}
+              calendars={editorChoices}
               busy={saving}
               isSeries={editing.placed !== null && needsScope(editing.placed)}
               ownAddresses={myAddresses}
               // `mayRSVP` is read from the calendar the event is IN, not from the account: a shared
               // calendar can grant reading and refuse answering, and a bar that always fails is
-              // worse than no bar.
-              mayRsvp={rsvpAllowed(shownCalendars, editing.placed)}
-              maxParticipants={maxParticipants}
+              // worse than no bar. Looked up inside the event's OWN account (#79) — the same right
+              // on another account's `c1` is a different calendar's answer.
+              mayRsvp={rsvpAllowed(
+                editing.placed === null
+                  ? []
+                  : (calendarsByAccount.get(editing.placed.accountId) ?? []),
+                editing.placed,
+              )}
+              maxParticipants={maxParticipantsFor(editing.placed?.accountId ?? ownAccountId)}
               onCancel={() => setEditing(null)}
-              onSubmit={(draft, scope, invite) => {
+              onSubmit={(draft, scope, invite, chosenAccountId) => {
                 const target = editing.placed
+                /*
+                 * Create goes to the account of the CHOSEN calendar; update goes to the account the
+                 * event already lives in (#79). They are never derived from one another: a create
+                 * has no event to ask, and an update may not be moved to another account by a
+                 * picker — see `EventDialogProps.calendars`.
+                 */
+                const writer = clientFor(target === null ? chosenAccountId : target.accountId)
+                if (writer === null) return
                 void run(
                   () =>
                     target === null
-                      ? client.createEvent(draft, invite)
-                      : client.updateEvent(target, draft, scope, invite),
+                      ? writer.createEvent(draft, invite)
+                      : writer.updateEvent(target, draft, scope, invite),
                   t('calendar.saveFailed'),
                 )
               }}
@@ -1412,7 +1683,9 @@ function CalendarContent({ ownAccountId, actingAccountId, ...props }: CalendarCo
                   ? undefined
                   : (key, status) => {
                       const target = editing.placed as PlacedEvent
-                      void run(() => client.rsvp(target, key, status), t('calendar.rsvpFailed'))
+                      const writer = clientFor(target.accountId)
+                      if (writer === null) return
+                      void run(() => writer.rsvp(target, key, status), t('calendar.rsvpFailed'))
                     }
               }
               onDestroy={
@@ -1442,6 +1715,96 @@ function rsvpAllowed(calendars: readonly Calendar[], placed: PlacedEvent | null)
   const ids = Object.keys(placed.event.calendarIds ?? {})
   return calendars.some(
     (calendar) => ids.includes(calendar.id) && calendar.myRights?.mayRSVP === true,
+  )
+}
+
+interface CalendarSectionsProps {
+  readonly ownAccountId: Id
+  /** The delegated accounts, in session order — each one a labelled section of its own. */
+  readonly accounts: readonly DelegatedAccount[]
+  readonly calendarsByAccount: ReadonlyMap<Id, Calendar[]>
+  readonly shownByAccount: ReadonlyMap<Id, Record<Id, boolean>> | undefined
+  /** The account `?account=` points at, marked with `aria-current` — see the page's note on it. */
+  readonly highlightedAccount: Id | null
+  /** `true` in the rail (a "Calendars" heading), `false` in the phone sheet (the title says it). */
+  readonly heading: boolean
+  readonly canCreateOwn: boolean
+  readonly disabled: boolean
+  onToggle: (accountId: Id, calendar: Calendar, shown: boolean) => void
+  onCreate: () => void
+  onEdit: (accountId: Id, calendar: Calendar) => void
+  onDelete: (accountId: Id, calendar: Calendar) => void
+  onShare?: ((accountId: Id, calendar: Calendar) => void) | undefined
+}
+
+/**
+ * The calendars of every account, grouped (#79) — the reader's own first and unlabelled, then one
+ * `<section>` per delegated account under that account's name.
+ *
+ * The same shape the contacts rail has used since S-4 (`GroupedBookList`), and for the same reason:
+ * a reader with no shares must see exactly what they saw before — a plain list, no headings, no
+ * extra landmarks — while a reader with shares needs to know whose "Team" they are ticking. The
+ * account name is DATA and is not translated.
+ *
+ * A delegated section whose list has not arrived is not rendered at all. `CalendarList` would
+ * otherwise say "This account has no calendars.", which is a claim, and it would be wrong for the
+ * second or so before the answer lands.
+ */
+function CalendarSections(props: CalendarSectionsProps): ReactNode {
+  const ownShown = props.shownByAccount?.get(props.ownAccountId) ?? NO_OVERRIDES
+  return (
+    <>
+      <CalendarList
+        calendars={props.calendarsByAccount.get(props.ownAccountId) ?? []}
+        accountId={props.ownAccountId}
+        shown={ownShown}
+        heading={props.heading}
+        canCreate={props.canCreateOwn}
+        disabled={props.disabled}
+        onToggle={(calendar, shown) => props.onToggle(props.ownAccountId, calendar, shown)}
+        onCreate={props.onCreate}
+        onEdit={(calendar) => props.onEdit(props.ownAccountId, calendar)}
+        onDelete={(calendar) => props.onDelete(props.ownAccountId, calendar)}
+        {...(props.onShare === undefined
+          ? {}
+          : {
+              onShare: (calendar: Calendar) => props.onShare?.(props.ownAccountId, calendar),
+            })}
+      />
+      {props.accounts.map((account) => {
+        const list = props.calendarsByAccount.get(account.id)
+        if (list === undefined) return null
+        return (
+          <section
+            key={account.id}
+            className={styles.calendarAccountSection}
+            aria-label={account.name}
+            {...(props.highlightedAccount === account.id
+              ? { 'aria-current': 'true' as const }
+              : {})}
+          >
+            <h3 className={styles.railTitle}>{account.name}</h3>
+            <CalendarList
+              calendars={list}
+              accountId={account.id}
+              shown={props.shownByAccount?.get(account.id) ?? NO_OVERRIDES}
+              heading={false}
+              /* Never from a delegated section: `Calendar/set create` against somebody else's
+                 account is refused, and the session's `mayCreateCalendar` is the reader's own. */
+              canCreate={false}
+              disabled={props.disabled}
+              onToggle={(calendar, shown) => props.onToggle(account.id, calendar, shown)}
+              onCreate={props.onCreate}
+              onEdit={(calendar) => props.onEdit(account.id, calendar)}
+              onDelete={(calendar) => props.onDelete(account.id, calendar)}
+              {...(props.onShare === undefined
+                ? {}
+                : { onShare: (calendar: Calendar) => props.onShare?.(account.id, calendar) })}
+            />
+          </section>
+        )
+      })}
+    </>
   )
 }
 
@@ -1522,6 +1885,8 @@ interface MonthViewProps {
   readonly locale: string
   /** The selected day, drawn as selected — the answer to "what did my click do?". */
   readonly focus: Date
+  /** The colour of an event's calendar, or `null` for one this screen cannot resolve (#79). */
+  readonly colorFor: (placed: PlacedEvent) => string | null
   onPick: (date: Date) => void
   /** The counter under a full cell was activated — show that day's whole list. */
   onExpand: (date: Date) => void
@@ -1529,7 +1894,16 @@ interface MonthViewProps {
   onOpen: (placed: PlacedEvent, day: Date) => void
 }
 
-function MonthView({ days, byDay, locale, focus, onPick, onExpand, onOpen }: MonthViewProps) {
+function MonthView({
+  days,
+  byDay,
+  locale,
+  focus,
+  colorFor,
+  onPick,
+  onExpand,
+  onOpen,
+}: MonthViewProps) {
   const { t } = useTranslation()
   // Weekday headers taken from the grid's own first row, so they follow the locale's first weekday
   // rather than being hard-coded to Monday.
@@ -1590,9 +1964,12 @@ function MonthView({ days, byDay, locale, focus, onPick, onExpand, onOpen }: Mon
               <span className={styles.dayEvents}>
                 {shown.map((placed) => (
                   <button
-                    key={`${placed.event.id}-${placed.startsAt}`}
+                    // The ACCOUNT is in the key (#79): two accounts routinely hold an event with
+                    // the same short id at the same instant, and React would then reconcile two
+                    // different events into one chip.
+                    key={`${placed.accountId}-${placed.event.id}-${placed.startsAt}`}
                     type="button"
-                    className={styles.chip}
+                    {...chipColor(styles.chip, colorFor(placed))}
                     onClick={() => onOpen(placed, day.date)}
                   >
                     {placed.event.title || t('calendar.untitled')}
@@ -1620,11 +1997,13 @@ function MonthView({ days, byDay, locale, focus, onPick, onExpand, onOpen }: Mon
 function DayDialog({
   day,
   events,
+  colorFor,
   onClose,
   onOpen,
 }: {
   readonly day: Date
   readonly events: readonly PlacedEvent[]
+  readonly colorFor: (placed: PlacedEvent) => string | null
   onClose: () => void
   onOpen: (placed: PlacedEvent, day: Date) => void
 }) {
@@ -1636,10 +2015,10 @@ function DayDialog({
       ) : (
         <ul className={styles.dayList}>
           {events.map((placed) => (
-            <li key={`${placed.event.id}-${placed.startsAt}`}>
+            <li key={`${placed.accountId}-${placed.event.id}-${placed.startsAt}`}>
               <button
                 type="button"
-                className={styles.dayListRow}
+                {...rowColor(styles.dayListRow, colorFor(placed))}
                 onClick={() => onOpen(placed, day)}
               >
                 <span className={styles.dayListTime}>
@@ -1662,10 +2041,12 @@ function DayDialog({
 function AgendaView({
   events,
   today,
+  colorFor,
   onOpen,
 }: {
   readonly events: readonly PlacedEvent[]
   readonly today: Date
+  readonly colorFor: (placed: PlacedEvent) => string | null
   onOpen: (placed: PlacedEvent, day: Date) => void
 }) {
   const { t } = useTranslation()
@@ -1681,10 +2062,10 @@ function AgendaView({
       {upcoming.map((placed) => {
         const start = new Date(placed.startsAt as number)
         return (
-          <li key={`${placed.event.id}-${placed.startsAt}`}>
+          <li key={`${placed.accountId}-${placed.event.id}-${placed.startsAt}`}>
             <button
               type="button"
-              className={styles.agendaRow}
+              {...rowColor(styles.agendaRow, colorFor(placed))}
               onClick={() => onOpen(placed, start)}
             >
               <span className={styles.agendaWhen}>

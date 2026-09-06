@@ -156,7 +156,7 @@ describe('refuseEdit', () => {
   const placed = (
     over: Partial<CalendarEvent>,
     identity: { writeId: string | null; series: boolean },
-  ) => placeEvent(event(over), identity)
+  ) => placeEvent(event(over), 'a1', identity)
 
   it('lets a resolved single event through', () => {
     expect(refuseEdit(placed({}, { writeId: '0', series: false }))).toBeNull()
@@ -179,7 +179,7 @@ describe('needsScope', () => {
   const placed = (
     over: Partial<CalendarEvent>,
     identity: { writeId: string | null; series: boolean },
-  ) => placeEvent(event(over), identity)
+  ) => placeEvent(event(over), 'a1', identity)
 
   it('asks for a scope when identity says series', () => {
     expect(needsScope(placed({}, { writeId: '7', series: true }))).toBe(true)
