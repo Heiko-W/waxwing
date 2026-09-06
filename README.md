@@ -69,7 +69,7 @@ you can check what you are upgrading to:
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing                       # arrived intact
 gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
-  --source-ref refs/tags/v0.24.0                               # built here, from THAT TAG
+  --source-ref refs/tags/v0.24.1                               # built here, from THAT TAG
 ```
 
 `--ignore-missing` because `SHA256SUMS` lists all three artefacts and you downloaded one;
@@ -105,7 +105,7 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.24.0 — feature-complete, and deliberately not 1.0 yet.**
+**v0.24.1 — feature-complete, and deliberately not 1.0 yet.**
 
 Every planned work package is done and the release gate is signed off: 5 952 unit tests, 20
 integration tests against a live Stalwart, and 255 end-to-end tests across the **seven** Playwright
@@ -113,7 +113,14 @@ suites the gate runs. The seventh is WebKit, which used to run beside the gate r
 see below. Performance and accessibility are measured rather than asserted — the numbers are in the
 [implementation plan](docs/implementation-plan.md).
 
-**v0.24.0 opens what other people have shared with you — and fixes the reason it could not work.**
+**v0.24.1 closes every open dependency advisory, including one that had been held open.** Seven
+alerts, six of them high, all in build- and test-time packages — the shipped bundle is byte-for-byte
+the same size. The esbuild one had been documented as a deliberate exception since 2026-08-18
+because the fix steps outside `tsup`'s declared range; `tsup` has not moved, but `vite` — the
+toolchain that builds the bundle — accepts the newer major and develops against it, and
+`build:libs` on it emits byte-identical output. Measured, not assumed. Nothing was dismissed.
+
+**v0.24.0 opened what other people have shared with you — and fixed the reason it could not work.**
 A shared calendar or address book has appeared in the session since S-1 and been unreachable in the
 client ever since. It now has a place: the contacts rail groups books by account, the calendar rail
 gains an account entry, and a delegated book opens in ITS account rather than in the same-id book in
