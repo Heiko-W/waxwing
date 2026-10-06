@@ -42,7 +42,7 @@ x-stalwart-common: &stalwart-common
 
 services:
   # Pinned baseline — NFR-COMPAT-02 (Stalwart v0.16.x). What dev + CI test against.
-  # If the -alpine tag ever misbehaves, swap to stalwartlabs/stalwart:v0.16.18 (non-alpine)
+  # If the -alpine tag ever misbehaves, swap to stalwartlabs/stalwart:v0.16.25 (non-alpine)
   # and note it in README.md; the fixture is otherwise identical.
   #
   # Raised 0.16.14 -> 0.16.18 on 2026-08-21 (finding I-1). The pin had fallen BEHIND the
@@ -51,10 +51,18 @@ services:
   # is untestable below it) and made ACL grants reach the session at all, and 0.16.18 made
   # `CalendarEvent/set` actually send invitations. Testing against the old pin meant testing
   # against a server that demonstrably behaves differently from the one this ships against.
+  #
+  # Raised 0.16.18 -> 0.16.25 on 2026-10-06, for the same reason and with the same lesson: the pin
+  # was seven patch releases behind upstream. The first suite run against the newer server found a
+  # break NO changelog mentions — from v0.16.20 the account
+  # `locale` is BCP 47 (`de-DE`) and the POSIX spelling (`de_DE`) is refused with `invalidPatch`.
+  # The client now reads and writes both (stalwart-client.ts, `LocaleStyle`), and
+  # `account-security.spec.ts` passes on either side of the change — checked against v0.16.19 and
+  # v0.16.25 by hand. A fixture that is never raised would have shipped that break to users.
   stalwart:
     <<: *stalwart-common
     profiles: [dev]
-    image: stalwartlabs/stalwart:v0.16.18-alpine
+    image: stalwartlabs/stalwart:v0.16.25-alpine
     container_name: waxwing-stalwart-dev
     # A real DNS-shaped hostname, and it is load-bearing for Web Push on Safari. Stalwart's VAPID
     # `sub` claim falls back to `mailto:postmaster@{hostname}`, and without this the hostname is the

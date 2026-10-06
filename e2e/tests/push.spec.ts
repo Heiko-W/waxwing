@@ -118,7 +118,7 @@ test.describe('M3.10 push transport (B4)', () => {
  * The unit suite proves what Waxwing builds; only a real Stalwart can prove the server accepts it.
  * Three things are at stake here and none of them is visible to a unit test:
  *
- *  - **The fixture is new enough.** `emailPush` arrived in v0.16.16 and the fixture runs v0.16.18.
+ *  - **The fixture is new enough.** `emailPush` arrived in v0.16.16 and the fixture runs v0.16.25.
  *    If someone pins it back, the capability assertion below is the thing that says so — rather than
  *    the app silently falling back to the contentless banner and every unit test staying green.
  *  - **`using` really is required, and really is enough.** RFC 8620 §3.3 lets a server fail the whole
