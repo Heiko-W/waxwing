@@ -367,7 +367,7 @@ each with the parent's declared range written next to it.
 
 **Limits.** Alerts are not a scan of what actually ships: they match the lockfile, so a
 build-time-only package counts the same as one in the bundle, and the triage of which is which is
-a person's job. **As of 2026-09-06 there are none open.** The esbuild advisory
+a person's job. **As of 2026-10-06 there are none open.** The esbuild advisory
 (`GHSA-g7r4-m6w7-qqqr`) that this section used to record as a deliberate exception is closed: the
 override to 0.28.1 leaves `tsup@8.5.1`'s declared `^0.27.0`, which is why it was refused before, but
 vite — the toolchain that builds the shipped bundle — accepts `^0.27.0 || ^0.28.0` and develops

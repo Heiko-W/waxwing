@@ -37,16 +37,19 @@ engineStrict: true
 # range its parent already declares, so these force a patch pnpm would otherwise leave alone rather
 # than overriding a contract:
 #
-#   undici           jsdom@29.1.1     wants ^7.25.0   -> 7.29.0
-#   fast-uri         ajv@8.20.0       wants ^3.0.1    -> 3.1.6
+#   undici           jsdom@29.1.1     wants ^7.25.0   -> 7.29.1
+#   fast-uri         ajv@8.20.0       wants ^3.0.1    -> 3.1.8
 #   nanoid           postcss@8.5.16   wants ^3.3.12   -> 3.3.18
 #   postcss          vite@8.1.3       wants ^8.5.16   -> 8.5.23
-#   brace-expansion  minimatch@5.1.9  wants ^2.0.1    -> 2.1.4
-#   brace-expansion  minimatch@10.2.5 wants ^5.0.5    -> 5.0.9
+#   brace-expansion  minimatch@5.1.9  wants ^2.0.1    -> 2.1.7
+#   brace-expansion  minimatch@10.2.5 wants ^5.0.5    -> 5.0.12
+#   source-map-js    postcss, css-tree wants ^1.2.1  -> 1.2.2
 #   browserslist     @babel/helper-compilation-targets@7.29.7 wants ^4.24.0 -> 4.28.7
 #
 # (2026-09-06: fast-uri raised 3.1.5 -> 3.1.6 and browserslist added, both for new advisories; the
 # esbuild note below is no longer an exception.)
+# (2026-10-06: undici, fast-uri and both brace-expansion lines raised again, source-map-js added.
+# vitest and dompurify are DIRECT dependencies and moved in their package.json files instead.)
 #
 # HERE and not `pnpm.overrides` in package.json: pnpm 11 reads its settings from this file, and
 # silently ignores the package.json block — the same trap `allowBuilds` above documents. Verified by
@@ -70,11 +73,12 @@ engineStrict: true
 #
 # Drop this entry the moment tsup declares ^0.28 — it exists to close an alert, not to stay.
 overrides:
-  undici: ^7.29.0
-  fast-uri: ^3.1.6
+  undici: ^7.29.1
+  fast-uri: ^3.1.8
+  source-map-js: ^1.2.2
   browserslist: ^4.28.7
   nanoid: ^3.3.18
   postcss: ^8.5.23
-  brace-expansion@2: ^2.1.4
-  brace-expansion@5: ^5.0.9
+  brace-expansion@2: ^2.1.7
+  brace-expansion@5: ^5.0.12
   esbuild: ^0.28.1
