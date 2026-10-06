@@ -39,8 +39,19 @@ const CREDENTIALS = { user: 'alice@waxwing.test', pass: 'waxwing-e2e-Pw1!' }
  */
 const CAROL_LABEL = 'carol@waxwing.test'
 
-/** A day inside the month the calendar opens on, so a grid assertion needs no date navigation. */
-const SHARED_EVENT_DAY = '2026-09-02'
+/**
+ * A day inside the month the calendar opens on, so a grid assertion needs no date navigation.
+ *
+ * COMPUTED, not a literal: the calendar opens on the CURRENT month, so `'2026-09-02'` was only ever
+ * true for as long as it was September. The suite went red on 2026-10-01 with nothing changed in the
+ * code under test — an event in the previous month is simply not in the grid. The 15th is inside
+ * every month and clear of the edges the grid pads with the neighbouring weeks.
+ */
+const SHARED_EVENT_DAY = (() => {
+  const today = new Date()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  return `${today.getFullYear()}-${month}-15`
+})()
 const SHARED_EVENT_TITLE = 'Carols shared meeting'
 
 async function login(page: Page, options: { stay?: boolean } = {}): Promise<void> {
