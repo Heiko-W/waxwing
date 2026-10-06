@@ -424,6 +424,165 @@ describe('makeSelfServiceClient — the account password', () => {
   })
 })
 
+/**
+ * A server that accepts ONE spelling of `locale` and answers the other with the enum refusal it
+ * really sends — measured 2026-10-06: v0.16.19 takes `de_DE` and refuses `de-DE`; v0.16.20 and
+ * every release after takes `de-DE` and refuses `de_DE`.
+ */
+function serverTaking(
+  style: 'posix' | 'bcp47',
+): (name: string, args: Record<string, unknown>) => Echo {
+  return (_name, args) => {
+    const update = args.update as { singleton: { locale: string } }
+    const sent = update.singleton.locale
+    const accepted = style === 'posix' ? !sent.includes('-') : !sent.includes('_')
+    return accepted
+      ? { updated: { singleton: null } }
+      : {
+          notUpdated: {
+            singleton: {
+              type: 'invalidPatch',
+              description: `Invalid value Str("${sent}") for enum type EnUS.`,
+              properties: ['locale'],
+            },
+          },
+        }
+  }
+}
+
+/** The `locale` of every `x:AccountSettings/set` the fake saw, in order. */
+function writtenLocales(fake: Fake): string[] {
+  return fake.calls
+    .filter(([name]) => name === 'x:AccountSettings/set')
+    .map(([, args]) => (args.update as { singleton: { locale: string } }).singleton.locale)
+}
+
+function settingsRead(locale: string): Record<string, Echo> {
+  return {
+    'x:AccountSettings/get': {
+      accountId: ACC,
+      list: [
+        { locale, timeZone: null, encryptionAtRest: { '@type': 'Disabled' }, id: 'singleton' },
+      ],
+      notFound: [],
+    },
+  }
+}
+
+describe('makeSelfServiceClient — the spelling of the language', () => {
+  it('reads a BCP 47 locale as the POSIX name the app works in', async () => {
+    const fake = fakeClient({ reads: settingsRead('en-US') })
+    const snapshot = await makeSelfServiceClient(fake.client, ACC).load()
+    expect(snapshot.language).toBe('en_US')
+  })
+
+  it('leaves a POSIX locale as it is', async () => {
+    const fake = fakeClient({ reads: settingsRead('de_DE') })
+    const snapshot = await makeSelfServiceClient(fake.client, ACC).load()
+    expect(snapshot.language).toBe('de_DE')
+  })
+
+  it('writes BCP 47 to a server that sent BCP 47 — one request, no retry', async () => {
+    const fake = fakeClient({ reads: settingsRead('en-US'), onSet: serverTaking('bcp47') })
+    const client = makeSelfServiceClient(fake.client, ACC)
+    await client.load()
+
+    await client.setLanguage('de_DE')
+
+    expect(writtenLocales(fake)).toEqual(['de-DE'])
+  })
+
+  it('writes POSIX to a server that sent POSIX — one request, no retry', async () => {
+    const fake = fakeClient({ reads: settingsRead('en_US'), onSet: serverTaking('posix') })
+    const client = makeSelfServiceClient(fake.client, ACC)
+    await client.load()
+
+    await client.setLanguage('de_DE')
+
+    expect(writtenLocales(fake)).toEqual(['de_DE'])
+  })
+
+  it('finds the spelling by itself when it was never told, and keeps it', async () => {
+    // No `load()` first: nothing to learn the dialect from. POSIX is tried, refused, BCP 47 lands —
+    // and the NEXT write goes straight to BCP 47 instead of paying for the refusal again.
+    const fake = fakeClient({ onSet: serverTaking('bcp47') })
+    const client = makeSelfServiceClient(fake.client, ACC)
+
+    await client.setLanguage('de_DE')
+    await client.setLanguage('fr_FR')
+
+    expect(writtenLocales(fake)).toEqual(['de_DE', 'de-DE', 'fr-FR'])
+  })
+
+  it('does not trust what it learned when the server changes its mind', async () => {
+    // A server upgraded between two writes: learned `posix`, now refused. The retry corrects it.
+    let style: 'posix' | 'bcp47' = 'posix'
+    const fake = fakeClient({
+      onSet: (name, args) => serverTaking(style)(name, args),
+    })
+    const client = makeSelfServiceClient(fake.client, ACC)
+    await client.setLanguage('de_DE')
+    style = 'bcp47'
+    await client.setLanguage('fr_FR')
+
+    expect(writtenLocales(fake)).toEqual(['de_DE', 'fr_FR', 'fr-FR'])
+  })
+
+  it('reports the first refusal when neither spelling is accepted', async () => {
+    // `xx_XX` is no language: both dialects refuse it, and the reader is told about the one the
+    // server was believed to want — after exactly two attempts, not a loop.
+    const fake = fakeClient({
+      reads: settingsRead('en-US'),
+      onSet: () => ({
+        notUpdated: {
+          singleton: {
+            type: 'invalidPatch',
+            description: 'Invalid value for enum type EnUS.',
+            properties: ['locale'],
+          },
+        },
+      }),
+    })
+    const client = makeSelfServiceClient(fake.client, ACC)
+    await client.load()
+
+    const error = (await rejection(client.setLanguage('xx_XX'))) as StalwartSetError
+
+    expect(error).toBeInstanceOf(StalwartSetError)
+    expect(error.type).toBe('invalidPatch')
+    expect(writtenLocales(fake)).toEqual(['xx-XX', 'xx_XX'])
+  })
+
+  it('does not retry a refusal that says nothing about spelling', async () => {
+    const fake = fakeClient({
+      onSet: () => ({
+        notUpdated: { singleton: { type: 'forbidden', description: 'Not allowed.' } },
+      }),
+    })
+
+    const error = (await rejection(
+      makeSelfServiceClient(fake.client, ACC).setLanguage('de_DE'),
+    )) as StalwartSetError
+
+    expect(error.type).toBe('forbidden')
+    expect(writtenLocales(fake)).toEqual(['de_DE'])
+  })
+
+  it('does not retry an `invalidPatch` about some other property', async () => {
+    const fake = fakeClient({
+      onSet: () => ({
+        notUpdated: {
+          singleton: { type: 'invalidPatch', description: 'Bad.', properties: ['timeZone'] },
+        },
+      }),
+    })
+
+    await rejection(makeSelfServiceClient(fake.client, ACC).setLanguage('de_DE'))
+
+    expect(writtenLocales(fake)).toEqual(['de_DE'])
+  })
+})
+
 describe('makeSelfServiceClient — account settings', () => {
   it('patches exactly ONE property', async () => {
     // Measured on v0.16.18: `{"timeZone":"Europe/Berlin","locale":"de"}` answers `notUpdated` for

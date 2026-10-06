@@ -49,7 +49,10 @@ export interface WireEncryptionAtRest {
 
 export interface WireAccountSettings {
   readonly id: Id
-  /** POSIX name — `en_US`, `de_DE`. A bare `de` is rejected with `invalidPatch`. */
+  /**
+   * The server's own spelling: POSIX (`en_US`) up to Stalwart v0.16.19, BCP 47 (`en-US`) from
+   * v0.16.20 on — see {@link LocaleStyle}. A bare `de` is rejected with `invalidPatch` in both.
+   */
   readonly locale?: string
   readonly timeZone?: string | null
   readonly encryptionAtRest?: WireEncryptionAtRest | null
@@ -168,6 +171,46 @@ export function toEncryption(
 }
 
 /**
+ * How a server spells a locale on the wire.
+ *
+ * **It changed inside the v0.16 series, and the changelog does not say so.** Up to v0.16.19 the
+ * account's `locale` is a POSIX name (`en_US`, `de_DE`); from v0.16.20 it is BCP 47 (`en-US`,
+ * `de-DE`). The two are not interchangeable: each server answers `invalidPatch` — *Invalid value
+ * Str("de_DE") for enum type EnUS* — to the other's spelling rather than normalising it. Measured
+ * 2026-10-06 against v0.16.19, .20, .21, .22 and .25 (a client written against v0.16.18 wrote
+ * `de_DE` and broke on every server from .20 on).
+ *
+ * Everything inside the app stays POSIX — {@link SERVER_LANGUAGES}, the `<select>` values, the
+ * labels — and the spelling is converted at the one seam that talks to the server.
+ */
+export type LocaleStyle = 'posix' | 'bcp47'
+
+/**
+ * Which spelling a locale the SERVER sent is in, or `null` when it cannot tell (`C`, a bare `ca`).
+ *
+ * The part after `@` is a POSIX modifier (`en_IE@euro`) and carries no separator of its own, so it
+ * is not looked at.
+ */
+export function localeStyleOf(wire: string): LocaleStyle | null {
+  const body = wire.split('@')[0] ?? wire
+  if (body.includes('_')) return 'posix'
+  if (body.includes('-')) return 'bcp47'
+  return null
+}
+
+/** A locale as the server sent it → the POSIX name the app works in (`de-DE` → `de_DE`). */
+export function toPosixLocale(wire: string): string {
+  const [body = '', ...modifier] = wire.split('@')
+  return [body.replaceAll('-', '_'), ...modifier].join('@')
+}
+
+/** A POSIX name → the spelling `style` wants on the wire (`de_DE` → `de-DE` for `'bcp47'`). */
+export function toWireLocale(posix: string, style: LocaleStyle): string {
+  const [body = '', ...modifier] = toPosixLocale(posix).split('@')
+  return [style === 'posix' ? body : body.replaceAll('_', '-'), ...modifier].join('@')
+}
+
+/**
  * The languages the SERVER can actually speak, as POSIX locale names.
  *
  * Stalwart's `Locale` enum has **336** variants, and offering all of them would be a lie in 324
@@ -219,7 +262,7 @@ export function languageOptions(current: string | null): readonly string[] {
  */
 export function languageLabel(posix: string, uiLanguage: string): string {
   // `en_IE@euro` and friends: the modifier is not part of a BCP-47 tag.
-  const tag = posix.split('@')[0]?.replace('_', '-') ?? posix
+  const tag = posix.split('@')[0]?.replaceAll('_', '-') ?? posix
   try {
     return new Intl.DisplayNames([uiLanguage], { type: 'language' }).of(tag) ?? posix
   } catch {
