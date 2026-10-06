@@ -19,7 +19,7 @@
     "client-zip": "^2.5.0",
     "dexie": "^4.4.4",
     "dexie-react-hooks": "^4.4.0",
-    "dompurify": "^3.4.13",
+    "dompurify": "^3.4.16",
     "i18next": "^26.3.4",
     "i18next-browser-languagedetector": "^8.2.1",
     "lucide-react": "^1.23.0",
