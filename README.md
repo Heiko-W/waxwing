@@ -69,7 +69,7 @@ you can check what you are upgrading to:
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing                       # arrived intact
 gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
-  --source-ref refs/tags/v0.25.0                               # built here, from THAT TAG
+  --source-ref refs/tags/v0.25.1                               # built here, from THAT TAG
 ```
 
 `--ignore-missing` because `SHA256SUMS` lists all three artefacts and you downloaded one;
@@ -105,13 +105,24 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.25.0 — feature-complete, and deliberately not 1.0 yet.**
+**v0.25.1 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: 5 952 unit tests, 20
+Every planned work package is done and the release gate is signed off: 5 982 unit tests, 20
 integration tests against a live Stalwart, and 255 end-to-end tests across the **seven** Playwright
 suites the gate runs. The seventh is WebKit, which used to run beside the gate rather than in it —
 see below. Performance and accessibility are measured rather than asserted — the numbers are in the
 [implementation plan](docs/implementation-plan.md).
+
+**v0.25.1 is compatible with Stalwart up to v0.16.25.** The end-to-end suites now run against
+Stalwart v0.16.25 (they ran against v0.16.18). The first run found one break that no Stalwart
+changelog mentions: **from v0.16.20 the account language is spelled `de-DE`, not `de_DE`, and the
+server refuses the old spelling** — so "Language of server messages" could not be saved on any newer
+server. Waxwing now reads either spelling and writes the one the server uses, so **v0.16.18 through
+v0.16.25 all work**: the whole suite is green on v0.25.1 / v0.16.25, and the language setting is
+also checked against v0.16.18 and v0.16.19 (the old spelling) and probed on v0.16.20–v0.16.22. The
+release also takes DOMPurify to 3.4.16 (both of its advisories concern the `IN_PLACE` mode, which
+Waxwing does not use) and closes the nine other open dependency alerts, all of them build- or
+test-time.
 
 **v0.25.0 draws every account's calendars in one grid.** A shared or group calendar used to be
 reachable one account at a time — an entry in the rail, and the whole screen switched to it. That is
@@ -446,8 +457,11 @@ Known gaps, stated plainly:
 
 - **No screen reader has been used on it by a person.** The accessibility work is automated and
   thorough; nobody has listened to it. See [`docs/accessibility.md`](docs/accessibility.md).
-- **Stalwart is the only server it has been tested against.** JMAP is a standard and the client
-  reads the session capabilities rather than assuming, but "should work" is not "does work".
+- **Stalwart is the only server it has been tested against** — currently v0.16.25. JMAP is a
+  standard and the client reads the session capabilities rather than assuming, but "should work"
+  is not "does work". Stalwart is pre-1.0 and has changed a wire format inside a patch series
+  before (the language spelling above), so check the release notes of a new Stalwart version
+  against the version tested here before updating a server you depend on.
 - **Cached mail is not encrypted at rest** — a browser has nowhere to put a key. On someone
   else's machine, tick "Public or shared computer" at sign-in: the cache is then removed on
   sign-out, on closing the tab, and at the next start if the browser crashed first. The window
