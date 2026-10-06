@@ -12,11 +12,14 @@ import {
   expiryFromDays,
   languageLabel,
   languageOptions,
+  localeStyleOf,
   SERVER_LANGUAGES,
   toAppPassword,
   toEncryption,
+  toPosixLocale,
   toPublicKey,
   toSpamSample,
+  toWireLocale,
 } from './stalwart-model'
 
 /** 2026-08-21T12:00:00Z — every relative assertion below is anchored here. */
@@ -198,6 +201,57 @@ describe('the language list', () => {
   it('drops the POSIX modifier a BCP-47 tag cannot carry', () => {
     // `en_IE@euro` is a real variant of Stalwart's enum; `Intl` would reject it whole.
     expect(languageLabel('en_IE@euro', 'en')).toContain('English')
+  })
+
+  it('names a locale with a script subtag, not only the two-part ones', () => {
+    // `zh_Hans_CN` has TWO separators. Replacing only the first gave `zh-Hans_CN`, which `Intl`
+    // rejects, and the option then showed the raw code.
+    expect(languageLabel('zh_Hans_CN', 'en')).toContain('Chinese')
+  })
+})
+
+describe('the two spellings of a locale', () => {
+  // Stalwart up to v0.16.19 writes `de_DE`; from v0.16.20 it writes `de-DE` and refuses the other.
+  // The app works in POSIX throughout and converts at the seam.
+  it('recognises which spelling a server sent', () => {
+    expect(localeStyleOf('en_US')).toBe('posix')
+    expect(localeStyleOf('en-US')).toBe('bcp47')
+    expect(localeStyleOf('en_IE@euro')).toBe('posix')
+  })
+
+  it('says nothing about a value that carries no separator', () => {
+    // `C` and a bare `ca` fit both dialects, so they must not flip what was learned from a real one.
+    expect(localeStyleOf('C')).toBeNull()
+    expect(localeStyleOf('ca')).toBeNull()
+  })
+
+  it('does not read the POSIX modifier as a separator', () => {
+    expect(localeStyleOf('sr@latin')).toBeNull()
+  })
+
+  it('turns whatever the server sent into the POSIX name the app uses', () => {
+    expect(toPosixLocale('de-DE')).toBe('de_DE')
+    expect(toPosixLocale('de_DE')).toBe('de_DE')
+    expect(toPosixLocale('zh-Hans-CN')).toBe('zh_Hans_CN')
+    expect(toPosixLocale('en_IE@euro')).toBe('en_IE@euro')
+  })
+
+  it('writes a POSIX name in the spelling the server wants', () => {
+    expect(toWireLocale('de_DE', 'posix')).toBe('de_DE')
+    expect(toWireLocale('de_DE', 'bcp47')).toBe('de-DE')
+    expect(toWireLocale('en_IE@euro', 'bcp47')).toBe('en-IE@euro')
+  })
+
+  it('accepts either spelling as input', () => {
+    expect(toWireLocale('de-DE', 'posix')).toBe('de_DE')
+    expect(toWireLocale('de-DE', 'bcp47')).toBe('de-DE')
+  })
+
+  it('round-trips every language the app offers', () => {
+    for (const posix of SERVER_LANGUAGES) {
+      expect(toPosixLocale(toWireLocale(posix, 'bcp47'))).toBe(posix)
+      expect(toPosixLocale(toWireLocale(posix, 'posix'))).toBe(posix)
+    }
   })
 })
 

@@ -43,13 +43,17 @@ import type { JmapSession } from '../app/session/types'
 import {
   type AppPasswordView,
   type EncryptionView,
+  type LocaleStyle,
+  localeStyleOf,
   type PublicKeyView,
   REGISTRY_SINGLETON,
   type SpamSampleView,
   toAppPassword,
   toEncryption,
+  toPosixLocale,
   toPublicKey,
   toSpamSample,
+  toWireLocale,
   type WireAccountSettings,
   type WireAppPassword,
   type WirePublicKey,
@@ -106,7 +110,10 @@ export interface SelfServiceSnapshot {
   readonly appPasswords: readonly AppPasswordView[] | null
   /** The password singleton is readable ⇒ offering to change it is worth the reader's time. */
   readonly passwordReadable: boolean
-  /** POSIX locale name, or `null` where the settings singleton is not readable. */
+  /**
+   * POSIX locale name — whatever spelling the server uses, see {@link LocaleStyle} — or `null`
+   * where the settings singleton is not readable.
+   */
   readonly language: string | null
   readonly encryption: EncryptionView | null
   readonly publicKeys: readonly PublicKeyView[]
@@ -128,6 +135,7 @@ export interface SelfServiceClient {
   destroyAppPassword(id: Id): Promise<void>
   /** `currentSecret` is mandatory; the server bans an account that gets it wrong too often. */
   changePassword(currentSecret: string, secret: string): Promise<void>
+  /** `locale` is a POSIX name (`de_DE`); the client writes it in the spelling the server accepts. */
   setLanguage(locale: string): Promise<void>
   destroySpamSample(id: Id): Promise<void>
 }
@@ -191,6 +199,14 @@ export function makeSelfServiceClient(client: JmapClient, accountId: Id): SelfSe
     return responses.get<SetEcho<T>>('s0')
   }
 
+  /**
+   * The spelling this server uses for `AccountSettings.locale`, learned from what it sends and
+   * from which write it accepts. `null` until one of those has happened — and then a write tries
+   * POSIX first, which is what a server up to v0.16.19 wants and costs one extra round trip on a
+   * newer one, once.
+   */
+  let localeStyle: LocaleStyle | null = null
+
   async function load(signal?: AbortSignal): Promise<SelfServiceSnapshot> {
     // ONE round trip for five reads. `x:*/get` with no `ids` means "all of them"; app passwords
     // additionally report the account's OWN credential id under `notFound`, which is why nothing
@@ -215,12 +231,14 @@ export function makeSelfServiceClient(client: JmapClient, accountId: Id): SelfSe
 
     const publicKeys = (keys?.list ?? []).map(toPublicKey)
     const singleton = settings?.list[0]
+    const language = singleton?.locale ?? null
+    if (language !== null) localeStyle = localeStyleOf(language) ?? localeStyle
 
     return {
       appPasswords:
         passwords === null ? null : passwords.list.map((one) => toAppPassword(one, now)),
       passwordReadable: password !== null,
-      language: singleton?.locale ?? null,
+      language: language === null ? null : toPosixLocale(language),
       encryption: settings === null ? null : toEncryption(singleton?.encryptionAtRest, publicKeys),
       publicKeys,
       spamSamples: samples === null ? null : samples.list.map(toSpamSample),
@@ -271,12 +289,39 @@ export function makeSelfServiceClient(client: JmapClient, accountId: Id): SelfSe
        * Measured on v0.16.18: a `x:AccountSettings/set` carrying a valid AND an invalid field
        * answers `notUpdated` — and writes the valid field anyway. A caller that batches has no way
        * to know what landed. With a single property the refusal and the write cannot disagree.
+       * It is also what makes the retry below safe: a refused patch wrote nothing.
        */
-      const echo = await set('x:AccountSettings/set', {
-        update: { [REGISTRY_SINGLETON]: { locale } },
-      })
-      const refused = echo.notUpdated?.[REGISTRY_SINGLETON]
-      if (refused !== undefined) throw toSetError(refused)
+      async function attempt(style: LocaleStyle): Promise<StalwartSetError | null> {
+        const echo = await set('x:AccountSettings/set', {
+          update: { [REGISTRY_SINGLETON]: { locale: toWireLocale(locale, style) } },
+        })
+        const refused = echo.notUpdated?.[REGISTRY_SINGLETON]
+        return refused === undefined ? null : toSetError(refused)
+      }
+
+      const first: LocaleStyle = localeStyle ?? 'posix'
+      const refusal = await attempt(first)
+      if (refusal === null) {
+        localeStyle = first
+        return
+      }
+
+      /*
+       * `invalidPatch` on `locale` is what a server answers to the OTHER spelling (see
+       * {@link LocaleStyle}) — and, identically, to a language it has never heard of. The two cannot
+       * be told apart from the answer, so the other spelling is tried exactly once: if it lands the
+       * first was the wrong dialect, and if it too is refused the language really is unknown. Any
+       * other refusal (`forbidden`, `serverFail`) says nothing about spelling and is not retried.
+       */
+      if (refusal.type !== 'invalidPatch' || !refusal.properties.includes('locale')) throw refusal
+      const other: LocaleStyle = first === 'posix' ? 'bcp47' : 'posix'
+      if ((await attempt(other)) === null) {
+        localeStyle = other
+        return
+      }
+      // The FIRST refusal is the one worth showing: it names the spelling the server was believed
+      // to want, and the second one only repeats the same enum complaint in the other dialect.
+      throw refusal
     },
 
     async destroySpamSample(id) {

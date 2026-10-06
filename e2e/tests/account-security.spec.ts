@@ -86,7 +86,12 @@ async function appPasswords(): Promise<AppPassword[]> {
   return (first(response).list ?? []) as AppPassword[]
 }
 
-async function accountLocale(): Promise<string> {
+/**
+ * The locale exactly as THIS server spells it: `en_US` up to Stalwart v0.16.19, `en-US` from v0.16.20.
+ * The server refuses the other spelling (`invalidPatch`, "Invalid value … for enum type EnUS"), so a
+ * test that compared against a literal passed on one side of v0.16.20 and failed on the other.
+ */
+async function accountLocaleRaw(): Promise<string> {
   const response = await alice.call(
     [CORE, STALWART],
     [['x:AccountSettings/get', { accountId: aliceAccountId, ids: ['singleton'] }, '0']],
@@ -97,8 +102,20 @@ async function accountLocale(): Promise<string> {
   return singleton.locale
 }
 
-async function setAccountLocale(locale: string): Promise<void> {
-  await alice.call(
+/** The same locale as a POSIX name, whichever way the server writes it — what the app works in. */
+async function accountLocale(): Promise<string> {
+  return (await accountLocaleRaw()).replaceAll('-', '_')
+}
+
+/**
+ * Writes a POSIX name in the spelling the server uses (read off the value it has now), and THROWS if
+ * the server refuses. It used to ignore the answer, and a refused reset then looked like a pass: the
+ * account stayed on whatever it had, and the next test's precondition failed for no visible reason.
+ */
+async function setAccountLocale(posix: string): Promise<void> {
+  const bcp47 = (await accountLocaleRaw()).includes('-')
+  const locale = bcp47 ? posix.replaceAll('_', '-') : posix
+  const response = await alice.call(
     [CORE, STALWART],
     [
       [
@@ -108,6 +125,11 @@ async function setAccountLocale(locale: string): Promise<void> {
       ],
     ],
   )
+  const refused = (first(response).notUpdated as Record<string, unknown> | null | undefined)
+    ?.singleton
+  if (refused !== undefined) {
+    throw new Error(`the server refused locale ${locale}: ${JSON.stringify(refused)}`)
+  }
 }
 
 /** Leave nothing behind, whichever assertion failed. */
@@ -209,16 +231,27 @@ test.describe('Settings → Account & security', () => {
     page,
   }) => {
     expect(await accountLocale()).toBe('en_US')
+    // Whichever spelling this server uses (`en_US` or `en-US`, see `accountLocaleRaw`) — the write
+    // below has to arrive in the SAME one, because the server refuses the other.
+    const separator = (await accountLocaleRaw()).includes('-') ? '-' : '_'
 
     await login(page)
     await openSettings(page)
     await openSettingsSection(page, SECTION)
 
-    await page.getByLabel('Language of server messages').selectOption('de_DE')
+    const select = page.getByLabel('Language of server messages')
+    // The read half: a server that sends `en-US` must still land on the `en_US` option, not on a
+    // stray "en-US" entry the select grows because it does not recognise the value.
+    await expect(select).toHaveValue('en_US')
+    await expect(select.locator('option')).toHaveCount(12)
+
+    await select.selectOption('de_DE')
 
     await expect
       .poll(accountLocale, { timeout: 20_000, intervals: [500, 1000, 2000] })
       .toBe('de_DE')
+    expect(await accountLocaleRaw()).toBe(`de${separator}DE`)
+    await expect(select).toHaveValue('de_DE')
 
     // Put it back through the UI, so the revert is exercised too.
     await page.getByLabel('Language of server messages').selectOption('en_US')
