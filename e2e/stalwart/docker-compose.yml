@@ -59,10 +59,14 @@ services:
   # The client now reads and writes both (stalwart-client.ts, `LocaleStyle`), and
   # `account-security.spec.ts` passes on either side of the change — checked against v0.16.19 and
   # v0.16.25 by hand. A fixture that is never raised would have shipped that break to users.
+  # Raised 0.16.25 -> 0.16.27 on 2026-10-21. The full `pnpm verify:e2e` gate is green on v0.16.27
+  # without a client change. v0.16.26 touched `Mailbox/set` (re-parenting under a same-named sibling
+  # is allowed; case-only renames are said to be refused with `alreadyExists`) — probed by hand:
+  # a case-only rename of a lone folder is still accepted, and re-parenting works.
   stalwart:
     <<: *stalwart-common
     profiles: [dev]
-    image: stalwartlabs/stalwart:v0.16.25-alpine
+    image: stalwartlabs/stalwart:v0.16.27-alpine
     container_name: waxwing-stalwart-dev
     # A real DNS-shaped hostname, and it is load-bearing for Web Push on Safari. Stalwart's VAPID
     # `sub` claim falls back to `mailto:postmaster@{hostname}`, and without this the hostname is the

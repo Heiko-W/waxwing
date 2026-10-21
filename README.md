@@ -457,7 +457,7 @@ Known gaps, stated plainly:
 
 - **No screen reader has been used on it by a person.** The accessibility work is automated and
   thorough; nobody has listened to it. See [`docs/accessibility.md`](docs/accessibility.md).
-- **Stalwart is the only server it has been tested against** — currently v0.16.25. JMAP is a
+- **Stalwart is the only server it has been tested against** — currently v0.16.27. JMAP is a
   standard and the client reads the session capabilities rather than assuming, but "should work"
   is not "does work". Stalwart is pre-1.0 and has changed a wire format inside a patch series
   before (the language spelling above), so check the release notes of a new Stalwart version
