@@ -18,6 +18,8 @@
 //      e2e:write / e2e:webkit / e2e:deploy) — they self-manage the Stalwart fixture: their Playwright globalSetup brings the
 //      fixture up advertising the app origin + seeds alice's inbox (self-smokes per ADR-002), and
 //      globalTeardown tears it down
+//   4b. build the release artefacts (`pnpm release`, which also checks their layout) and INSTALL the
+//      Stalwart zip into the fixture as an Application (`pnpm e2e:bundle`, e2e/bundle-install.mjs)
 //   5. ALWAYS tear the fixture down as a backstop, even if a step above failed or was killed
 //      before those suites' own teardown ran
 //
@@ -134,6 +136,13 @@ try {
   // deploy, e2e/pwa-stage.vite.config.mjs), so putting it earlier would make every other suite wait
   // on work none of them need. It self-manages the fixture like read/write.
   run('deploy e2e suite', ['e2e:deploy'])
+  // The release bundle, installed into a live Stalwart as an Application and opened. Nothing else
+  // hands the zip to a server: Stalwart 1.0 refuses a bundle without `stalwart-app.json` and says so
+  // only in its own log, so a zip that passes every other check can still be uninstallable. `pnpm
+  // release` first because it builds the artefact AND checks its layout; the install then proves the
+  // server agrees. Last, after the deploy suite, because it rebuilds the app once more.
+  run('release artefacts', ['release'])
+  run('release bundle installs in Stalwart', ['e2e:bundle'])
 } catch (error) {
   failure = error
 } finally {
