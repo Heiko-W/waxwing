@@ -1811,6 +1811,7 @@
     "searchPlaceholder": "Naam of adres",
     "noMatches": "Niemand komt daarmee overeen.",
     "searchFailed": "Het zoeken naar personen is mislukt.",
+    "directoryOff": "Zoeken naar personen is op deze server uitgeschakeld. Vraag de beheerder om adreslijstzoekopdrachten toe te staan.",
     "roleLabel": "Deze persoon mag",
     "roleFor": "Wat {{name}} mag doen",
     "grant": "Toevoegen",

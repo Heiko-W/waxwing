@@ -9,7 +9,7 @@ import {
   seedReadMail,
 } from '../stalwart/seed-read.mjs'
 import { ACCOUNTS, jmapAs } from '../stalwart/seed-write.mjs'
-import { revealPasswordForm, SYNC_BUDGET_MS, SYNC_POLL } from './helpers'
+import { revealPasswordForm, SYNC_BUDGET_MS, SYNC_POLL, signInAtServer } from './helpers'
 
 /**
  * A reading-pane action, wherever the bar has put it. See `bulkAction` in offline.spec.ts for why
@@ -274,9 +274,7 @@ test.describe('M1.9 read suite', () => {
     await page.getByRole('button', { name: 'Sign in', exact: true }).click()
     // Stalwart's /login SPA (same-origin via the proxy): fill its form and submit; the app then
     // completes the PKCE code exchange and mounts the shell.
-    await page.locator('#username').fill(CREDENTIALS.user)
-    await page.locator('#password').fill(CREDENTIALS.pass)
-    await page.locator('#login-form button[type="submit"]').click()
+    await signInAtServer(page, { user: CREDENTIALS.user, pass: CREDENTIALS.pass })
     await openInbox(page)
   })
 

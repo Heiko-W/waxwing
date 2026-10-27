@@ -65,13 +65,22 @@ const emptyChanges = (state: string): ChangesResult => ({
  * A 401/403 is an auth expiry and routes to the re-auth funnel (FR-AUTH-06); this one must not, and
  * a fake that threw a bare `Error` would let a fix that only handles bare errors pass.
  */
-function forbidden(method: string): never {
+function refuse(type: Refusal, method: string): never {
   throw new JmapMethodError(
-    { type: 'forbidden', description: `You do not have access to account ${ACC}` },
+    { type, description: `You do not have access to account ${ACC}` },
     '0',
     method,
   )
 }
+
+/**
+ * The two ways Stalwart says "not for you" on a shared account. 0.16 answers `forbidden`; **1.0
+ * answers `accountNotSupportedByMethod`** — measured 2026-10-27, the same call on the same shared
+ * account — which is also the RFC 8620 §3.6.2 spelling for "this account does not do that". The
+ * engine has to treat them as the one permanent refusal they are.
+ */
+type Refusal = 'forbidden' | 'accountNotSupportedByMethod'
+const REFUSALS: readonly Refusal[] = ['forbidden', 'accountNotSupportedByMethod']
 
 /**
  * A port for a contacts-and-calendar-only account: every MAIL method refuses exactly as the server
@@ -81,7 +90,7 @@ function forbidden(method: string): never {
  * to refuse each new mail method, and a forgotten one turns this file green for the wrong reason —
  * the failure mode is silent, which is what the test is about in the first place.
  */
-function pimOnlyPort(): JmapPort & { readonly calls: string[] } {
+function pimOnlyPort(refusal: Refusal = 'forbidden'): JmapPort & { readonly calls: string[] } {
   const calls: string[] = []
   const answered: Partial<Record<keyof JmapPort, unknown>> = {
     accountId: ACC,
@@ -117,7 +126,7 @@ function pimOnlyPort(): JmapPort & { readonly calls: string[] } {
       const own = target[prop as keyof JmapPort]
       return (...args: unknown[]) => {
         calls.push(prop)
-        if (own === undefined) return forbidden(prop)
+        if (own === undefined) return refuse(refusal, prop)
         return (own as (...a: unknown[]) => unknown)(...args)
       }
     },
@@ -184,7 +193,9 @@ beforeEach(() => {
   db = freshDb()
 })
 
-describe('a delegated MAIL account whose identities the server refuses', () => {
+describe.each(
+  REFUSALS,
+)('a delegated MAIL account whose identities the server refuses with %s', (refusal) => {
   /*
    * The second half of the same measurement, and the one that is not S-4's fault at all.
    *
@@ -200,7 +211,7 @@ describe('a delegated MAIL account whose identities the server refuses', () => {
    * about it looked broken; its contacts and calendar simply never arrived.
    */
   function mailAccountRefusingIdentities(): JmapPort & { readonly calls: string[] } {
-    const port = pimOnlyPort()
+    const port = pimOnlyPort(refusal)
     const withMail = new Proxy(port, {
       get(target, prop: string) {
         if (prop === 'getMailboxes') {

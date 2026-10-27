@@ -103,6 +103,7 @@ import { searchPrincipals } from '../sharing/principals'
 // The property lists live with the sync engine's port contract, not here: the replica (K-8) and this
 // online client MUST ask for the same fields or an event read offline would be missing whatever only
 // one of them named — and `eventSignature`'s join breaks outright if the two lists drift.
+import { expandedQueries } from '../sync/engine/calendar-window'
 import {
   CALENDAR_EVENT_PROPERTIES,
   CALENDAR_OBJECT_PROPERTIES,
@@ -508,6 +509,12 @@ export function draftToEvent(
  * So more than one calendar is an `OR` of single-calendar conditions, `AND`ed with the window. One
  * calendar gets the same shape rather than a flattened condition: a single code path is one thing
  * to be right about, and the `OR`-of-one was measured working too.
+ *
+ * **This is the operator form, and Stalwart 1.0 takes it only WITHOUT `expandRecurrences`.** With
+ * expansion it answers `"The filter must be a single FilterCondition when expanding recurrences"`,
+ * so the expanded queries are built from this by `expandedQueries` — one `{window, inCalendar}`
+ * each. The filter stays the replica's key and the unexpanded companion query's filter, where the
+ * operator form is accepted on both servers.
  */
 export function calendarFilter(
   from: Date,
@@ -789,16 +796,20 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
       const filter = calendarFilter(from, to, calendarIds)
 
       // What the grid draws: one entry per occurrence. See the note at the top — the server owns
-      // recurrence expansion, and the ids it answers with are display ids.
-      const occurrenceQuery = builder.invoke(Methods.calendarEventQuery, {
-        accountId,
-        filter,
-        expandRecurrences: true,
-      })
-      const occurrences = builder.invoke(Methods.calendarEventGet, {
-        accountId,
-        '#ids': occurrenceQuery.ref('/ids'),
-        properties: [...CALENDAR_EVENT_PROPERTIES],
+      // recurrence expansion, and the ids it answers with are display ids. ONE QUERY PER CALENDAR,
+      // because an expanded query takes a single condition (Stalwart 1.0; `sync/engine/
+      // calendar-window.ts` has the measurements) — each with its own `/get`, all in this one request.
+      const expanded = expandedQueries(filter).map((single) => {
+        const query = builder.invoke(Methods.calendarEventQuery, {
+          accountId,
+          filter: single,
+          expandRecurrences: true,
+        })
+        return builder.invoke(Methods.calendarEventGet, {
+          accountId,
+          '#ids': query.ref('/ids'),
+          properties: [...CALENDAR_EVENT_PROPERTIES],
+        })
       })
       // What a write may address: the same window WITHOUT expansion, which is the query whose ids
       // are real. Two more calls inside the same request, so it stays one round trip.
@@ -809,6 +820,11 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
         properties: [...CALENDAR_OBJECT_PROPERTIES],
       })
       const responses = await builder.send()
+      // An event that lives in two calendars is answered by both queries; it is one event.
+      const seen = new Set<Id>()
+      const occurrenceList = expanded
+        .flatMap((handle) => responses.get(handle).list)
+        .filter((event) => !seen.has(event.id) && seen.add(event.id))
 
       /*
        * Identity is a nice-to-have for READING, so a server that refuses the companion query must
@@ -823,9 +839,8 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
       }
 
       return (
-        responses
-          .get(occurrences)
-          .list.map((event: CalendarEvent) =>
+        occurrenceList
+          .map((event: CalendarEvent) =>
             placeEvent(event, accountId, resolveIdentity(event, index)),
           )
           // An event whose start could not be read is dropped rather than sorted to 1970, where it

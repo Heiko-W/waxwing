@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
+import { signInAtServer } from './helpers'
 
 // SP.4 raw-demo end-to-end spec. It proves the "Done when": a human logs in with Basic and
 // reads a delivered test mail end-to-end (subject + body text), and the Email/parse button
@@ -125,9 +126,7 @@ test.describe('SP.4 raw demo', () => {
     await page.getByRole('button', { name: 'Sign in with OAuth' }).click()
 
     // Stalwart's /login SPA (same-origin via the demo proxy): fill its form and submit.
-    await page.locator('#username').fill(CREDENTIALS.user)
-    await page.locator('#password').fill(CREDENTIALS.pass)
-    await page.locator('#login-form button[type="submit"]').click()
+    await signInAtServer(page, { user: CREDENTIALS.user, pass: CREDENTIALS.pass })
 
     // Back at the app root with ?code=…; the demo completes the exchange and lists mailboxes.
     await expect(page.getByRole('navigation', { name: 'Mailboxes' })).toBeVisible({

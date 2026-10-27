@@ -6,6 +6,10 @@
  * **measured against Stalwart 0.16** rather than transcribed from either. Where a future revision
  * disagrees with the server, the server is what this client talks to.
  *
+ * **They are the shapes of 0.16, and that is deliberate.** Stalwart 1.0 speaks a later revision
+ * (`@type`, `mediaType`, a seventh right); `filenode-wire.ts` translates it into THESE types where
+ * a node enters the app, so everything downstream reads one shape.
+ *
  * A file node is a filesystem entry: a directory, a file with a blob, or a symlink. The tree is
  * `parentId`-linked, with `null` for the roots — the same shape as the mailbox tree, which is why
  * it needs no new UI vocabulary.
@@ -39,6 +43,11 @@ export interface FileNodeRights {
   mayDelete: boolean
   mayModifyContent: boolean
   mayShare: boolean
+  /**
+   * Joined the six in Stalwart 1.0 (JMAP Object Metadata). Waxwing neither offers nor reads it; it is
+   * typed so a grant read back from a 1.0 server, which carries it, is still a `FileNodeRights`.
+   */
+  maySetMetadata?: boolean
 }
 
 /** A node in the file tree. */

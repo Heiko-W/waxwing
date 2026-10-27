@@ -1837,6 +1837,7 @@
     "searchPlaceholder": "Nome ou endereço",
     "noMatches": "Ninguém corresponde a isso.",
     "searchFailed": "A pesquisa de pessoas falhou.",
+    "directoryOff": "A pesquisa de pessoas está desativada neste servidor. Peça a quem o administra que permita consultas ao diretório.",
     "roleLabel": "Esta pessoa pode",
     "roleFor": "O que {{name}} pode fazer",
     "grant": "Adicionar",

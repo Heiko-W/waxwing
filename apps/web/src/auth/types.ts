@@ -20,8 +20,13 @@ export type DiscoveryAlgorithm = 'oauth2' | 'oidc'
 export interface OAuthConfig {
   /** Issuer identifier, e.g. `https://mail.example.com` (RFC 8414 discovery base). */
   issuer: string
-  /** Public client id. Stalwart needs no pre-registration by default (tech-stack §4.7). */
-  clientId: string
+  /**
+   * Public client id. **Omit it** and the controller picks the one the server will accept: on
+   * Stalwart 1.0 the app's own `oauth-client.json` document, on 0.16 the free-form `waxwing`
+   * (see {@link AuthController}). Name it only when a deployment has registered a client of its
+   * own — an `OAuthClient` object on the server — because then no guess can be right.
+   */
+  clientId?: string
   /** Requested scopes. `offline_access` is required to receive a refresh token. */
   scopes: string[]
   /**

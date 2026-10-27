@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
-import { revealPasswordForm, SYNC_BUDGET_MS } from './helpers'
+import { revealPasswordForm, SYNC_BUDGET_MS, signInAtServer } from './helpers'
 
 /**
  * Public-computer mode, end to end (FR-AUTH-09).
@@ -232,9 +232,7 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
     await page.getByRole('button', { name: 'Sign in', exact: true }).click()
 
     // Stalwart's own /login SPA, same-origin through the preview proxy.
-    await page.locator('#username').fill(CREDENTIALS.user)
-    await page.locator('#password').fill(CREDENTIALS.pass)
-    await page.locator('#login-form button[type="submit"]').click()
+    await signInAtServer(page, { user: CREDENTIALS.user, pass: CREDENTIALS.pass })
 
     await page.getByRole('treeitem', { name: /Inbox/ }).click()
     await expect(page.getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 60_000 })
@@ -258,9 +256,7 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
     // silently end offline cold start for every normal user.
     await page.goto('/')
     await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-    await page.locator('#username').fill(CREDENTIALS.user)
-    await page.locator('#password').fill(CREDENTIALS.pass)
-    await page.locator('#login-form button[type="submit"]').click()
+    await signInAtServer(page, { user: CREDENTIALS.user, pass: CREDENTIALS.pass })
     await page.getByRole('treeitem', { name: /Inbox/ }).click()
     await expect(page.getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 60_000 })
 

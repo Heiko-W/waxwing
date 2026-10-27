@@ -28,7 +28,17 @@ import type {
   JmapClient,
   Principal,
 } from '@waxwing/jmap'
-import { Capabilities, hasCapability, Methods } from '@waxwing/jmap'
+import {
+  Capabilities,
+  FULL_FILE_RIGHTS,
+  fileNodeWire,
+  hasCapability,
+  Methods,
+  NO_FILE_RIGHTS,
+  newDirectory,
+  newFile,
+  normalizeFileNodes,
+} from '@waxwing/jmap'
 import type { JmapSession } from '../app/session/types'
 import { searchPrincipals } from '../sharing/principals'
 
@@ -165,6 +175,22 @@ export function makeFilesClient(
   /** Excluded from principal searches. See {@link currentUserPrincipalId}. */
   selfPrincipalId: Id | null = null,
 ): FilesClient {
+  /**
+   * Which spelling of `FileNode` this account's server speaks (0.16: `nodeType`; 1.0: `@type`).
+   * Read per call, not once: the session is replaced when it is refreshed, and a server that was
+   * upgraded under a long-lived tab changes its answer.
+   */
+  const wire = () =>
+    fileNodeWire(client.session.accounts?.[accountId]?.accountCapabilities?.[Capabilities.fileNode])
+
+  /**
+   * What a file with no `myRights` and no folder in the batch to inherit from may do: everything in
+   * the user's own account (Stalwart 1.0 puts rights on directories only), nothing in a delegated one
+   * — where 0.16 said the same for such a node. See `normalizeFileNodes`.
+   */
+  const rootRights = () =>
+    client.session.accounts?.[accountId]?.isPersonal === true ? FULL_FILE_RIGHTS : NO_FILE_RIGHTS
+
   /** Throws {@link FileSetError} for the first per-object refusal in a `/set` response. */
   function throwIfRefused(response: {
     notCreated?: Record<string, { type: string; description?: string | null }> | null
@@ -221,7 +247,10 @@ export function makeFilesClient(
       '#ids': query.ref('/ids'),
     })
     const responses = await builder.send()
-    return { ids: responses.get(query).ids, nodes: responses.get(nodes).list }
+    return {
+      ids: responses.get(query).ids,
+      nodes: normalizeFileNodes(responses.get(nodes).list, rootRights()),
+    }
   }
 
   /** `FileNode/get` for ids this client already holds — no back-reference, so it chunks normally. */
@@ -230,7 +259,7 @@ export function makeFilesClient(
     const responses = await client.call([
       [Methods.fileNodeGet.name, { accountId, ids: [...ids] }, 'f0'],
     ])
-    return responses.get<{ list: FileNode[] }>('f0').list
+    return normalizeFileNodes(responses.get<{ list: object[] }>('f0').list, rootRights())
   }
 
   return {
@@ -344,12 +373,12 @@ export function makeFilesClient(
           {
             accountId,
             create: {
-              f: {
+              f: newFile(wire(), {
                 name: file.name,
                 parentId,
                 blobId: uploaded.blobId,
-                type: uploaded.type,
-              },
+                mediaType: uploaded.type,
+              }),
             },
           },
           'f0',
@@ -367,7 +396,7 @@ export function makeFilesClient(
       const responses = await client.call([
         [
           Methods.fileNodeSet.name,
-          { accountId, create: { d: { name, parentId, nodeType: 'directory' } } },
+          { accountId, create: { d: newDirectory(wire(), { name, parentId }) } },
           'f0',
         ],
       ])

@@ -1778,6 +1778,7 @@
     "searchPlaceholder": "姓名或地址",
     "noMatches": "没有匹配的人。",
     "searchFailed": "人员搜索失败。",
+    "directoryOff": "此服务器已关闭人员搜索。请联系管理员允许目录查询。",
     "roleLabel": "对方可以",
     "roleFor": "{{name}}可以做什么",
     "grant": "添加",

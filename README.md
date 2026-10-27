@@ -46,11 +46,11 @@ curl -u 'admin:PASSWORD' -X POST https://mail.example.com/jmap/ \
     "methodCalls": [["x:Application/set", {
       "create": {
         "waxwing": {
-          "enabled": true,
+          "enable": true,
           "description": "Waxwing webmail",
           "resourceUrl": "https://github.com/Heiko-W/waxwing/releases/latest/download/waxwing-stalwart.zip",
           "urlPrefix": { "/webmail": true },
-          "autoUpdateFrequency": 604800000
+          "autoUpdateInterval": 604800000
         }
       }
     }, "c1"]]
@@ -60,7 +60,11 @@ curl -u 'admin:PASSWORD' -X POST https://mail.example.com/jmap/ \
 Restart Stalwart and open `https://mail.example.com/webmail/`. That is the whole installation:
 no web server to run, no container, no database.
 
-`autoUpdateFrequency` makes Stalwart re-fetch the release weekly, so new versions arrive on
+That is the Stalwart **1.0** spelling. Stalwart 0.16 calls the two fields `enabled` and
+`autoUpdateFrequency` — [`docs/deployment.md`](docs/deployment.md#stalwart-10-and-016) lists everything
+that differs.
+
+`autoUpdateInterval` makes Stalwart re-fetch the release weekly, so new versions arrive on
 their own. Say plainly what that means: it is a standing decision to run whatever this project
 publishes next, in your users' browsers, against their mailboxes. If you would rather not,
 point `resourceUrl` at a versioned asset and drop the field — then upgrading is deliberate, and
@@ -457,11 +461,13 @@ Known gaps, stated plainly:
 
 - **No screen reader has been used on it by a person.** The accessibility work is automated and
   thorough; nobody has listened to it. See [`docs/accessibility.md`](docs/accessibility.md).
-- **Stalwart is the only server it has been tested against** — currently v0.16.27. JMAP is a
-  standard and the client reads the session capabilities rather than assuming, but "should work"
-  is not "does work". Stalwart is pre-1.0 and has changed a wire format inside a patch series
-  before (the language spelling above), so check the release notes of a new Stalwart version
-  against the version tested here before updating a server you depend on.
+- **Stalwart is the only server it has been tested against** — currently v1.0.0 and v0.16.27, with
+  the same suites green on both. JMAP is a standard and the client reads the session capabilities
+  rather than assuming, but "should work" is not "does work". Stalwart changes wire formats where its
+  release notes do not say so: the language spelling inside 0.16, and eight things between 0.16.27
+  and 1.0 ([ADR-048](docs/adr/048-stalwart-1-0-is-a-second-baseline.md)) — two of which stopped
+  sign-in and the Files screen outright. Check a new Stalwart version against the one tested here
+  before updating a server you depend on, and upgrade Waxwing **before** you migrate to 1.0.
 - **Cached mail is not encrypted at rest** — a browser has nowhere to put a key. On someone
   else's machine, tick "Public or shared computer" at sign-in: the cache is then removed on
   sign-out, on closing the tab, and at the next start if the browser crashed first. The window

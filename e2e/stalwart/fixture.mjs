@@ -188,9 +188,7 @@ async function queryFirstId(object, filter) {
 async function ensureDomain() {
   const existing = await queryFirstId('Domain', { name: DOMAIN })
   if (existing) return { id: existing, created: false }
-  const args = await jmap([
-    ['x:Domain/set', { create: { d: { name: DOMAIN, isEnabled: true } } }, '0'],
-  ])
+  const args = await jmap([['x:Domain/set', { create: { d: { name: DOMAIN } } }, '0']])
   const created = args.created?.d
   if (!created) throw new Error(`Domain ${DOMAIN} not created: ${JSON.stringify(args.notCreated)}`)
   return { id: created.id, created: true }
@@ -348,6 +346,25 @@ async function ownAccountId(account) {
   return id
 }
 
+/**
+ * What a new directory has to carry to be accepted: nothing on 0.16 (a node with no blob is a
+ * directory), `@type: "Directory"` on 1.0, which refuses to create anything untyped. The server
+ * says which it speaks — `supportedNodeTypes` in the account's filenode capability, present only on
+ * 1.0 — so this asks rather than being told a version. Same rule as `fileNodeWire` in
+ * `packages/jmap/src/filenode-wire.ts`; duplicated because this file is plain Node with no build.
+ */
+async function directoryKind(account) {
+  const res = await fetchThrottled(SESSION_URL, {
+    headers: { authorization: basicAuth(account.login, account.password) },
+    redirect: 'follow',
+  })
+  if (!res.ok) throw new Error(`session for ${account.login}: HTTP ${res.status}`)
+  const doc = await res.json()
+  const capability = Object.values(doc.accounts ?? {}).find((entry) => entry.isPersonal)
+    ?.accountCapabilities?.['urn:ietf:params:jmap:filenode']
+  return Array.isArray(capability?.supportedNodeTypes) ? { '@type': 'Directory' } : {}
+}
+
 /** The grantee's principal id, as the OWNER's account can see it. */
 async function principalIdFor(owner, ownerAccountId, granteeLogin) {
   const args = await jmapAs(owner, SHARE_USING, [
@@ -493,6 +510,93 @@ async function restartForConfig() {
   await waitForReady()
 }
 
+/**
+ * Let the test accounts look each other up (`x:Sharing.allowDirectoryQueries`).
+ *
+ * Stalwart 1.0 switched this OFF by default. Until then `Principal/get` handed every user the whole
+ * organisation; on 1.0 `Principal/query` answers `forbidden` ("The administrator has disabled
+ * directory queries.") and `Principal/get` returns only the accounts the caller already has access
+ * to. Measured on v1.0.0 — it took the delegation helpers down with `principal alice@… not visible
+ * to bob@…`, and with them every suite that shares anything. The share pickers and the composer's
+ * directory suggestions run on exactly this lookup, so the fixture has to turn it on to test them.
+ *
+ * Applied with the `ReloadSettings` action, no restart needed (measured). A 0.16 server has no
+ * such gate — the object may be absent or not carry the field — so every failure here is a quiet
+ * "nothing to do" rather than a broken fixture.
+ */
+async function ensureDirectoryQueries() {
+  let existing
+  try {
+    const args = await jmap([['x:Sharing/get', { ids: ['singleton'] }, '0']])
+    existing = args.list?.[0]
+  } catch {
+    return 'not applicable'
+  }
+  if (existing === undefined || !('allowDirectoryQueries' in existing)) return 'not applicable'
+  if (existing.allowDirectoryQueries === true) return 'exists'
+  await jmap([['x:Sharing/set', { update: { singleton: { allowDirectoryQueries: true } } }, '0']])
+  const reload = await jmap([
+    ['x:Action/set', { create: { r: { '@type': 'ReloadSettings' } } }, '0'],
+  ])
+  if (!reload.created?.r) throw new Error(`ReloadSettings not run: ${JSON.stringify(reload)}`)
+  return 'applied'
+}
+
+/**
+ * Register the app under test as an OAuth client — Stalwart 1.0 only.
+ *
+ * **1.0 refuses a client id it has never been told about** ("Unknown client id"), where 0.16 took
+ * `waxwing` on faith. An app served from a Stalwart bundle is recognised by its `oauth-client.json`,
+ * but only over TLS and on one of the server's own hostnames (`AppOriginPolicy::TrustedHosts`,
+ * read from the v1.0.0 source) — and this fixture is plain HTTP on localhost, with the app on a
+ * different origin altogether (a Vite preview, reached through a same-origin proxy). What 1.0 does
+ * offer for that case is a registered `OAuthClient`, and a registered client is matched by the exact
+ * string, `http://` included.
+ *
+ * The id and the redirect are the ones the app derives on its own (`auth/oauth.ts`:
+ * `applicationClientId` and `applicationRedirectUri`, from `document.baseURI`) — the app origin the
+ * setup scripts publish in `STALWART_PUBLIC_URL` plus `/oauth-client.json` and `/oauth/callback`.
+ * `firstParty` so the token carries the account's full permissions: without it the self-service
+ * registry (`urn:stalwart:jmap`) is missing from the session and the Security section vanishes.
+ * The consent screen still appears for it; `signInAtServer` in the tests clicks through.
+ *
+ * Whether the server wants this is read from its own discovery document rather than from a version
+ * number. Idempotent per origin, and an origin is added, never replaced: the suites run one after
+ * another against volumes that survive between them.
+ */
+async function ensureOAuthClient() {
+  const origin = process.env.STALWART_PUBLIC_URL
+  if (!origin || origin === BASE_URL) return 'no separate app origin'
+  const discovery = await (
+    await fetchThrottled(`${BASE_URL}/.well-known/openid-configuration`)
+  ).json()
+  if (discovery.client_id_metadata_document_supported !== true) return 'not applicable'
+
+  const clientId = `${origin}/oauth-client.json`
+  const known = await jmap([['x:OAuthClient/get', { ids: null }, '0']])
+  if ((known.list ?? []).some((client) => client.clientId === clientId)) return 'exists'
+
+  const args = await jmap([
+    [
+      'x:OAuthClient/set',
+      {
+        create: {
+          c: {
+            clientId,
+            description: 'Waxwing e2e',
+            redirectUris: { [`${origin}/oauth/callback`]: true },
+            firstParty: true,
+          },
+        },
+      },
+      '0',
+    ],
+  ])
+  if (!args.created?.c)
+    throw new Error(`OAuth client ${clientId} not created: ${JSON.stringify(args)}`)
+  return 'registered'
+}
+
 // Idempotent: query-before-create, so it is safe to run on every `up`.
 export async function provision() {
   const domain = await ensureDomain()
@@ -503,6 +607,10 @@ export async function provision() {
     await ensureQuota(result.id)
     console.log(`  account ${result.login} -> ${result.id} ${state} quota=${ACCOUNT_QUOTA_BYTES}`)
   }
+  const directory = await ensureDirectoryQueries()
+  console.log(`  directory queries allowed (${directory})`)
+  const oauth = await ensureOAuthClient()
+  console.log(`  oauth client for ${process.env.STALWART_PUBLIC_URL ?? BASE_URL} (${oauth})`)
   const rate = await ensureRateLimit()
   console.log(`  rate limit ${RATE_LIMIT_PER_MINUTE}/min per account (${rate})`)
 }
@@ -655,7 +763,14 @@ export async function shareFileFolder(owner, grantee, name) {
       'FileNode/set',
       {
         accountId: ownerAccountId,
-        create: { f1: { name, parentId: null, shareWith: { [granteePrincipal]: rights } } },
+        create: {
+          f1: {
+            ...(await directoryKind(ownerAccount)),
+            name,
+            parentId: null,
+            shareWith: { [granteePrincipal]: rights },
+          },
+        },
       },
       '0',
     ],

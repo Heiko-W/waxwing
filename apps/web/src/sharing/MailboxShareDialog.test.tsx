@@ -9,7 +9,7 @@
 
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { Id, MailboxRights, Principal } from '@waxwing/jmap'
+import { type Id, JmapMethodError, type MailboxRights, type Principal } from '@waxwing/jmap'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectNoA11yViolations } from '../test/axe'
 import { MailboxShareDialog } from './MailboxShareDialog'
@@ -133,6 +133,34 @@ describe('what goes on the wire', () => {
     expect(await screen.findByText(/was not saved/i)).toBeInTheDocument()
     // Bob is still a candidate: he was never granted anything.
     expect(screen.getByRole('button', { name: /Give Bob Baker access/i })).toBeInTheDocument()
+  })
+})
+
+describe('when the people search cannot work', () => {
+  it('says the server switched it off — a retry would not help, an administrator can', async () => {
+    // Stalwart 1.0 ships with directory queries off: `Principal/query` is `forbidden`, "The
+    // administrator has disabled directory queries." (measured on 1.0.0). The dialog used to call
+    // that "The people search failed", which sends a user to try again and an administrator never
+    // hears about it.
+    searchPrincipals.mockRejectedValue(
+      new JmapMethodError(
+        { type: 'forbidden', description: 'The administrator has disabled directory queries.' },
+        '0',
+        'Principal/query',
+      ),
+    )
+    renderDialog()
+
+    expect(await screen.findByText(/People search is switched off on this server/)).toBeVisible()
+    expect(screen.queryByText('The people search failed.')).not.toBeInTheDocument()
+  })
+
+  it('still calls any other failure a failure — the counter-test', async () => {
+    searchPrincipals.mockRejectedValue(new Error('network'))
+    renderDialog()
+
+    expect(await screen.findByText('The people search failed.')).toBeVisible()
+    expect(screen.queryByText(/switched off/)).not.toBeInTheDocument()
   })
 })
 

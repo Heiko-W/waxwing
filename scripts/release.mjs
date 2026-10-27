@@ -10,6 +10,10 @@
 //   waxwing-stalwart.zip            THE SAME BYTES under a name that never changes — this is
 //                                   what makes auto-update work (see below)
 //
+// The Stalwart zip alone carries two documents the other archive has no use for — see
+// {@link bundleDocuments}: `stalwart-app.json` (Stalwart 1.0 REFUSES a bundle without it) and
+// `oauth-client.json` (what 1.0 identifies the app by when a user signs in with OAuth).
+//
 // ── WHY AN UNVERSIONED COPY ───────────────────────────────────────────────────────────────────
 //
 // Stalwart re-fetches an Application's `resourceUrl` on `autoUpdateFrequency`. Point that URL at
@@ -156,7 +160,58 @@ function sha256(path) {
 }
 
 /**
- * Write `files` (paths relative to `DIST`) into `target`, in the given order.
+ * The two documents Stalwart reads from the ROOT of an application bundle. Neither is served as a
+ * file; both are consumed by the server at install time (`crates/common/src/manager/application.rs`,
+ * measured against v1.0.0 and read from its source).
+ *
+ * **`stalwart-app.json` is mandatory on 1.0.** A bundle without it is refused at install with
+ * "Application bundle does not contain a manifest" — so the zip this project shipped through
+ * v0.25.1 cannot be installed on a 1.0 server at all, and an `UpdateApps` on a migrated server
+ * would leave the old copy in place with an error in the log. 0.16 never looks at it. `id` is free
+ * (only the server's own `webui` is special); `minServerVersion` is left out on purpose, because
+ * the same bundle serves 0.16 and 1.0 and 0.16 has no notion of it.
+ *
+ * **`oauth-client.json` is how 1.0 knows who is asking.** Stalwart 1.0 answers `client_id=waxwing`
+ * with "Unknown client id"; an app it serves itself is identified by the URL of this file instead
+ * (`https://host/webmail/oauth-client.json`), and the server builds the public document from
+ * these fields plus the host the request came in on. Rules, from the same source: no `client_id`,
+ * `client_secret` or `jwks`; 1 to 16 `redirect_uris`, each a RELATIVE path (no leading `/`, no `..`,
+ * not empty — which is why the app returns to `oauth/callback` and not to its base); at most 5 KB.
+ * The app derives the same URL from `document.baseURI` (`auth/oauth.ts`, `applicationClientId`).
+ *
+ * `scope` is omitted deliberately: a first-party bundle gets the account's full permissions, and
+ * a client without a stated scope is granted all four (mail, contacts, calendars, files), which is
+ * exactly what Waxwing uses.
+ *
+ * @param {string} v
+ * @returns {{ name: string, data: string }[]}
+ */
+function bundleDocuments(v) {
+  return [
+    {
+      name: 'oauth-client.json',
+      data: `${JSON.stringify(
+        {
+          client_name: 'Waxwing',
+          client_uri: 'https://github.com/Heiko-W/waxwing',
+          software_id: 'waxwing',
+          software_version: v,
+          redirect_uris: ['oauth/callback'],
+        },
+        null,
+        2,
+      )}\n`,
+    },
+    {
+      name: 'stalwart-app.json',
+      data: `${JSON.stringify({ id: 'waxwing', version: v })}\n`,
+    },
+  ]
+}
+
+/**
+ * Write `files` (paths relative to `DIST`) into `target`, in the given order, then `documents`
+ * (`{ name, data }`, generated rather than read from `DIST`) after them in theirs.
  *
  * Entries are added one at a time rather than with `archive.directory()`: the caller's list is
  * sorted, and a deterministic ORDER is the first half of what makes two builds of the same content
@@ -183,7 +238,7 @@ function sha256(path) {
  * zlib build can still compress differently. That is why `SHA256SUMS` ships with the release rather
  * than being something a deployer is expected to reproduce blind.
  */
-function pack(format, target, files) {
+function pack(format, target, files, documents = []) {
   return new Promise((resolvePromise, reject) => {
     const output = createWriteStream(target)
     const archive =
@@ -199,6 +254,7 @@ function pack(format, target, files) {
     archive.on('error', reject)
     archive.pipe(output)
     for (const file of files) archive.file(join(DIST, file), { name: file, date: EPOCH })
+    for (const { name, data } of documents) archive.append(data, { name, date: EPOCH })
     archive.finalize()
   })
 }
@@ -252,7 +308,7 @@ function zipEntries(path) {
  * Every one of these is a failure mode SP.5 or M3.5 actually hit, which is why they are assertions
  * rather than a README paragraph:
  */
-function check(paths) {
+function check(paths, v) {
   const problems = []
 
   // 1. Stalwart fetches `resourceUrl` and keys off the `.zip` extension — a `.tgz` is refused.
@@ -289,6 +345,38 @@ function check(paths) {
   }
   if (listing.some((name) => name.endsWith('.webmanifest'))) {
     problems.push('a .webmanifest is present — Stalwart serves it as octet-stream (FR-DEP-06)')
+  }
+
+  // 6. The two documents Stalwart 1.0 reads at install. Held to the rules its parser enforces
+  //    (application.rs / app_client.rs), because a bundle that violates one installs on 0.16 and
+  //    fails on 1.0 — the failure arrives on the day the server is migrated, not on release day.
+  for (const { name, data } of bundleDocuments(v)) {
+    if (!listing.includes(name)) problems.push(`${name} is missing from the Stalwart bundle`)
+    if (Buffer.byteLength(data) > 4096)
+      problems.push(`${name} is over Stalwart's 4 KB manifest cap`)
+  }
+  const [client, manifest] = bundleDocuments(v).map(({ data }) => JSON.parse(data))
+  if (manifest.id !== 'waxwing' || manifest.version !== v) {
+    problems.push(
+      `stalwart-app.json names ${manifest.id}@${manifest.version}, expected waxwing@${v}`,
+    )
+  }
+  for (const forbidden of ['client_id', 'client_secret', 'jwks', 'jwks_uri']) {
+    if (forbidden in client) problems.push(`oauth-client.json must not contain ${forbidden}`)
+  }
+  const redirects = client.redirect_uris ?? []
+  if (redirects.length < 1 || redirects.length > 16) {
+    problems.push('oauth-client.json must list between 1 and 16 redirect_uris')
+  }
+  for (const uri of redirects) {
+    if (
+      uri === '' ||
+      uri.startsWith('/') ||
+      uri.includes('..') ||
+      /^[a-z][a-z0-9+.-]*:/i.test(uri)
+    ) {
+      problems.push(`oauth-client.json redirect URI "${uri}" must be a relative path`)
+    }
   }
 
   if (problems.length > 0) {
@@ -328,7 +416,7 @@ async function main() {
   await pack('tar', paths.web, files)
 
   log(`packing → ${relative(ROOT, paths.stalwart)}`)
-  await pack('zip', paths.stalwart, files)
+  await pack('zip', paths.stalwart, files, bundleDocuments(v))
 
   // A byte-for-byte copy, not a second pack: the two must have the same checksum, or a deployer
   // who verifies the versioned asset has verified nothing about the one their server actually
@@ -346,7 +434,7 @@ async function main() {
   writeFileSync(join(OUT, 'SHA256SUMS'), `${sums}\n`)
   log('wrote SHA256SUMS')
 
-  if (wantsCheck) check(paths)
+  if (wantsCheck) check(paths, v)
   log(`done — artefacts in ${relative(ROOT, OUT)}/`)
 }
 

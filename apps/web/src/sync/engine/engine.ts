@@ -1919,7 +1919,8 @@ export class SyncEngine {
          * measured, not anticipated.
          *
          * A DELEGATED mailbox has no identities the reader may send from: Stalwart answers
-         * `Identity/get` on a shared account with `forbidden` (measured 2026-09-05 against the
+         * `Identity/get` on a shared account with `forbidden` — on 1.0, with
+         * `accountNotSupportedByMethod`, handled below (measured 2026-09-05 against the
          * fixture, with carol's inbox shared to alice read-only), which is consistent with ADR-020
          * — send-as from a delegated account is not offered because the server refuses it.
          *
@@ -1939,7 +1940,14 @@ export class SyncEngine {
           this.identitiesSynced = true // only after success, so an offline first pass retries
         } catch (error) {
           if (isAuthExpiry(error)) throw error
-          if (thrownErrorType(error) !== 'forbidden') throw error
+          // Two spellings of the same refusal. 0.16 says `forbidden`; Stalwart 1.0 says
+          // `accountNotSupportedByMethod` (RFC 8620 §3.6.2) — it stopped advertising `submission`
+          // on a shared account, so the account "does not support" identities rather than "forbids"
+          // them. Measured 2026-10-27. Handling only the first is how a 1.0 server's shared
+          // address books and calendars stopped arriving: this leg threw, and the contacts and
+          // calendar legs after it never ran.
+          const type = thrownErrorType(error)
+          if (type !== 'forbidden' && type !== 'accountNotSupportedByMethod') throw error
           this.identitiesSynced = true
         }
       }

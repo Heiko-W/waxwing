@@ -41,9 +41,12 @@ x-stalwart-common: &stalwart-common
     start_period: 5s
 
 services:
-  # Pinned baseline — NFR-COMPAT-02 (Stalwart v0.16.x). What dev + CI test against.
-  # If the -alpine tag ever misbehaves, swap to stalwartlabs/stalwart:v0.16.25 (non-alpine)
-  # and note it in README.md; the fixture is otherwise identical.
+  # Pinned baseline — NFR-COMPAT-02 (Stalwart v1.0 and v0.16.27, ADR-048). What dev + CI test against.
+  # The default is the NEWER of the two. The other is one variable away:
+  #     WAXWING_STALWART_TAG=v0.16.27-alpine pnpm verify:e2e
+  # (any tag of stalwartlabs/stalwart works). Both are green on the same suites; that is the claim.
+  # If the -alpine tag ever misbehaves, swap to the non-alpine one (e.g. v1.0.0) and note it in
+  # README.md; the fixture is otherwise identical.
   #
   # Raised 0.16.14 -> 0.16.18 on 2026-08-21 (finding I-1). The pin had fallen BEHIND the
   # production server, and not harmlessly: 0.16.16 added `urn:ietf:params:jmap:emailpush`,
@@ -59,6 +62,11 @@ services:
   # The client now reads and writes both (stalwart-client.ts, `LocaleStyle`), and
   # `account-security.spec.ts` passes on either side of the change — checked against v0.16.19 and
   # v0.16.25 by hand. A fixture that is never raised would have shipped that break to users.
+  # Raised the DEFAULT to 1.0.0 on 2026-10-27, one day after its release, and kept 0.16.27 testable.
+  # Stalwart 1.0 changed eight things a client sees and its release notes name almost none of them — see
+  # ADR-048 for the table. Among them: `x:Domain` lost `isEnabled` (omitted now, the default is on),
+  # directory queries are off until `x:Sharing.allowDirectoryQueries` is set (`ensureDirectoryQueries`
+  # in fixture.mjs), and an OAuth client has to be registered per app origin (`ensureOAuthClient`).
   # Raised 0.16.25 -> 0.16.27 on 2026-10-21. The full `pnpm verify:e2e` gate is green on v0.16.27
   # without a client change. v0.16.26 touched `Mailbox/set` (re-parenting under a same-named sibling
   # is allowed; case-only renames are said to be refused with `alreadyExists`) — probed by hand:
@@ -66,7 +74,7 @@ services:
   stalwart:
     <<: *stalwart-common
     profiles: [dev]
-    image: stalwartlabs/stalwart:v0.16.27-alpine
+    image: stalwartlabs/stalwart:${WAXWING_STALWART_TAG:-v1.0.0-alpine}
     container_name: waxwing-stalwart-dev
     # A real DNS-shaped hostname, and it is load-bearing for Web Push on Safari. Stalwart's VAPID
     # `sub` claim falls back to `mailto:postmaster@{hostname}`, and without this the hostname is the

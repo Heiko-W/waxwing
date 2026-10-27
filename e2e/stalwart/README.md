@@ -55,7 +55,7 @@ pnpm e2e:server        # fresh registry -> defaults regenerated
 
 ## Test accounts
 
-The baseline is **Stalwart v0.16.x** (NFR-COMPAT-02). In v0.16 the config file is only a
+The baseline is **Stalwart v1.0 and v0.16.27** (NFR-COMPAT-02, ADR-048; the default is 1.0, `WAXWING_STALWART_TAG=v0.16.27-alpine` selects the other). Since v0.16 the config file is only a
 data-store descriptor — domains and accounts live inside the store — so accounts cannot be
 declared statically. `fixture.mjs provision` creates them idempotently over Stalwart's JMAP
 management API (`x:Domain/set`, `x:Account/set`) after the server is up.
@@ -176,9 +176,11 @@ fixture-side hooks make the browser demo work:
 `docker-compose.yml` defines two variants behind compose **profiles** so a bare
 `docker compose up` starts nothing by accident:
 
-- **`dev`** — pinned `stalwartlabs/stalwart:v0.16.27-alpine`, the tested baseline. This is
-  what `pnpm e2e:server` runs. **Changing this tag requires a `pnpm e2e:server:down` before the
-  next `up`** — see “Upgrading the pinned image” above.
+- **`dev`** — pinned `stalwartlabs/stalwart:v1.0.0-alpine`, the tested baseline, unless
+  `WAXWING_STALWART_TAG` names another tag (`WAXWING_STALWART_TAG=v0.16.27-alpine pnpm e2e:server`
+  runs the other supported server; the same variable works for `pnpm verify:e2e`). This is what
+  `pnpm e2e:server` runs. **Changing this tag requires a `pnpm e2e:server:down` before the next
+  `up`** — see “Upgrading the pinned image” above.
 - **`main`** — `stalwartlabs/stalwart:latest`, intended for a scheduled, **non-blocking** compat
   job. That job does not exist: no workflow carries a `schedule:` trigger. The profile is run by
   hand (`pnpm e2e:server:main`). Compat
@@ -201,7 +203,7 @@ node e2e/stalwart/fixture.mjs down     # tears down whichever profile is running
 
 ## Troubleshooting
 
-- **Alpine image issues** — swap `:v0.16.27-alpine` for the non-alpine `:v0.16.27` in
+- **Alpine image issues** — swap `:v1.0.0-alpine` for the non-alpine `:v1.0.0` in
   `docker-compose.yml` (both were verified to boot identically) and note it here.
 - **Port 18080 in use** — something else holds the port; free it or change the host port in
   **all three** places, which must stay in sync: the `ports:` mapping **and**

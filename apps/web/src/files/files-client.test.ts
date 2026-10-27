@@ -25,6 +25,7 @@ import { describe, expect, it } from 'vitest'
 import { makeFilesClient } from './files-client'
 
 const ACC = 'a'
+const FILENODE_URN = 'urn:ietf:params:jmap:filenode'
 
 function node(id: string, parentId: string | null, overrides: Partial<FileNode> = {}): FileNode {
   return {
@@ -76,20 +77,26 @@ interface Fake {
  * (4) `FileNode/get` answers a back-reference with the query's own ids and an explicit `ids` list
  * with those nodes — the two paths `files-client.ts` actually uses.
  */
-function fakeClient(nodes: FileNode[], principals: Principal[] = []): Fake {
+function fakeClient(
+  nodes: object[],
+  principals: Principal[] = [],
+  /** The session document the client carries. 0.16's filenode capability has no `supportedNodeTypes`. */
+  session: unknown = { accounts: { [ACC]: { accountCapabilities: { [FILENODE_URN]: {} } } } },
+): Fake {
   const sent: Invocation<Record<string, unknown>>[][] = []
 
   const handle = (calls: Invocation<Record<string, unknown>>[]): MethodResponses => {
     sent.push(calls)
     const responses: Invocation<Record<string, unknown>>[] = []
     let queried: FileNode[] = []
+    const all = nodes as FileNode[]
     for (const [name, args, id] of calls) {
       if (name === 'FileNode/query') {
         const filter = args.filter as { parentId?: string | null; name?: string } | undefined
         if (filter !== undefined && filter.parentId === null) {
           throw new Error('notRequest: invalid type: null, expected a borrowed string')
         }
-        let matched = nodes
+        let matched = all
         if (filter?.parentId !== undefined) {
           matched = matched.filter((n) => n.parentId === filter.parentId)
         }
@@ -115,14 +122,27 @@ function fakeClient(nodes: FileNode[], principals: Principal[] = []): Fake {
       }
       if (name === 'FileNode/get') {
         const ids = args.ids as string[] | undefined
-        const list = ids === undefined ? queried : nodes.filter((n) => ids.includes(n.id))
+        const list = ids === undefined ? queried : all.filter((n) => ids.includes(n.id))
         responses.push([name, { accountId: ACC, state: 's1', list, notFound: [] }, id])
         continue
       }
       if (name === 'FileNode/set') {
+        const created = Object.fromEntries(
+          Object.keys((args.create as Record<string, unknown> | undefined) ?? {}).map((key) => [
+            key,
+            { id: `new-${key}` },
+          ]),
+        )
         responses.push([
           name,
-          { accountId: ACC, oldState: 's0', newState: 's1', updated: {}, destroyed: [] },
+          {
+            accountId: ACC,
+            oldState: 's0',
+            newState: 's1',
+            created,
+            updated: {},
+            destroyed: [],
+          },
           id,
         ])
         continue
@@ -142,6 +162,10 @@ function fakeClient(nodes: FileNode[], principals: Principal[] = []): Fake {
   }
 
   const client = {
+    session,
+    async upload(_account: string, file: File, options: { type: string }) {
+      return { blobId: `blob-of-${file.name}`, type: options.type, size: file.size }
+    },
     request() {
       return new RequestBuilder(async (builder) =>
         handle(builder.invocations as Invocation<Record<string, unknown>>[]),
@@ -283,6 +307,7 @@ describe('a listing longer than one page', () => {
     // A server that answers every page with the first one. Not hypothetical: this client already
     // knows this server reads one query argument differently than the draft says.
     const stuck = {
+      session: { accounts: {} },
       request: () =>
         new RequestBuilder(async (builder) => {
           const calls = builder.invocations as Invocation<Record<string, unknown>>[]
@@ -438,5 +463,160 @@ describe('searchPrincipals', () => {
     await makeFilesClient(fake.client, ACC).searchPrincipals('bob')
 
     expect(argsOf(fake, 'Principal/query').filter).toEqual({ text: 'bob' })
+  })
+})
+
+/**
+ * Stalwart 1.0 spells a file node differently — measured on 1.0.0, 2026-10-27 — and the Files screen
+ * must neither notice nor care: the listing is translated where it enters, and what is written is
+ * spelled the way the account's own capability says.
+ */
+describe('on a server that speaks the typed form (Stalwart 1.0)', () => {
+  const TYPED_SESSION = {
+    accounts: {
+      [ACC]: {
+        accountCapabilities: {
+          [FILENODE_URN]: { supportedNodeTypes: ['Directory', 'File', 'SymLink'] },
+        },
+      },
+    },
+  }
+
+  /** Verbatim shape from `FileNode/get`: typed, `mediaType`, absent values missing, `shareWith: null`. */
+  const typedFolder = {
+    id: 'd1',
+    parentId: null,
+    '@type': 'Directory',
+    name: 'Docs',
+    created: '2026-10-27T15:49:05Z',
+    modified: '2026-10-27T15:49:05Z',
+    accessed: '2026-10-27T15:49:05Z',
+    changed: '2026-10-27T15:49:05Z',
+    isSubscribed: true,
+    myRights: { mayRead: true, maySetMetadata: true },
+    shareWith: null,
+    role: null,
+  }
+  const typedFile = {
+    id: 'f1',
+    parentId: null,
+    '@type': 'File',
+    blobId: 'blob-f1',
+    size: 12,
+    name: 'a.txt',
+    mediaType: 'text/plain',
+    created: '2026-10-27T15:49:05Z',
+    modified: '2026-10-27T15:49:05Z',
+    accessed: '2026-10-27T15:49:05Z',
+    changed: '2026-10-27T15:49:05Z',
+    executable: false,
+  }
+
+  it('lists nodes in the shape the screen reads', async () => {
+    const fake = fakeClient([typedFolder, typedFile], [], TYPED_SESSION)
+
+    const listing = await makeFilesClient(fake.client, ACC).list(null)
+
+    const byId = new Map(listing.nodes.map((n) => [n.id, n]))
+    expect(byId.get('d1')?.nodeType).toBe('directory')
+    expect(byId.get('f1')?.nodeType).toBe('file')
+    expect(byId.get('f1')?.type).toBe('text/plain')
+    // Both absent on the wire; the screen iterates one and reads the other.
+    expect(byId.get('d1')?.shareWith).toEqual({})
+    expect(byId.get('d1')?.blobId).toBeNull()
+  })
+
+  it('creates a folder with `@type`, and without the spelling 1.0 refuses', async () => {
+    const fake = fakeClient([], [], TYPED_SESSION)
+
+    await makeFilesClient(fake.client, ACC).createFolder('Docs', null)
+
+    const create = (argsOf(fake, 'FileNode/set').create as Record<string, object>).d
+    expect(create).toEqual({ '@type': 'Directory', name: 'Docs', parentId: null })
+  })
+
+  it('uploads a file typed, WITH its media type — or 1.0 stores an anonymous binary', async () => {
+    const fake = fakeClient([], [], TYPED_SESSION)
+
+    await makeFilesClient(fake.client, ACC).upload(
+      new File(['hi'], 'a.txt', { type: 'text/plain' }),
+      'd1',
+    )
+
+    const create = (argsOf(fake, 'FileNode/set').create as Record<string, object>).f
+    expect(create).toEqual({
+      '@type': 'File',
+      name: 'a.txt',
+      parentId: 'd1',
+      blobId: 'blob-of-a.txt',
+      mediaType: 'text/plain',
+    })
+  })
+})
+
+describe('rights on 1.0, where only a directory carries them', () => {
+  const typed = (isPersonal: boolean) => ({
+    accounts: {
+      [ACC]: {
+        isPersonal,
+        accountCapabilities: {
+          [FILENODE_URN]: { supportedNodeTypes: ['Directory', 'File', 'SymLink'] },
+        },
+      },
+    },
+  })
+  const file = {
+    id: 'f1',
+    parentId: null,
+    '@type': 'File',
+    blobId: 'blob-f1',
+    size: 3,
+    name: 'a.txt',
+    mediaType: 'text/plain',
+  }
+
+  it('gives a file in the user’s OWN account every right — or Delete and Share vanish from it', async () => {
+    // Found by the end-to-end suite, not by reading: the node has no `myRights` on 1.0, and a client
+    // that defaults that to "none" offers a Files screen with nothing to do to any file.
+    const fake = fakeClient([file], [], typed(true))
+    const listing = await makeFilesClient(fake.client, ACC).list(null)
+    expect(listing.nodes[0]?.myRights.mayDelete).toBe(true)
+    expect(listing.nodes[0]?.myRights.mayRename).toBe(true)
+    expect(listing.nodes[0]?.myRights.mayShare).toBe(true)
+  })
+
+  it('does not hand out rights in a DELEGATED account that nothing granted', async () => {
+    const fake = fakeClient([file], [], typed(false))
+    const listing = await makeFilesClient(fake.client, ACC).list(null)
+    expect(listing.nodes[0]?.myRights.mayDelete).toBe(false)
+    expect(listing.nodes[0]?.myRights.mayRead).toBe(false)
+  })
+})
+
+describe('on a server that speaks the 0.16 form — the counter-test', () => {
+  it('creates a folder with `nodeType`, as it always did', async () => {
+    const fake = fakeClient([])
+
+    await makeFilesClient(fake.client, ACC).createFolder('Docs', null)
+
+    const create = (argsOf(fake, 'FileNode/set').create as Record<string, object>).d
+    expect(create).toEqual({ nodeType: 'directory', name: 'Docs', parentId: null })
+  })
+
+  it('uploads with `type`, and no kind — the request v0.25 sent', async () => {
+    const fake = fakeClient([])
+
+    await makeFilesClient(fake.client, ACC).upload(
+      new File(['hi'], 'a.txt', { type: 'text/plain' }),
+      null,
+    )
+
+    const create = (argsOf(fake, 'FileNode/set').create as Record<string, object>).f
+    expect(create).toEqual({
+      name: 'a.txt',
+      parentId: null,
+      blobId: 'blob-of-a.txt',
+      type: 'text/plain',
+    })
   })
 })

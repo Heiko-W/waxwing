@@ -15,9 +15,12 @@
 import {
   basic,
   Capabilities,
+  type FileNodeWire,
+  fileNodeWire,
   getSession,
   JmapClient,
   Methods,
+  newDirectory,
   principalSearchFilter,
 } from '@waxwing/jmap'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -33,6 +36,7 @@ let client: JmapClient
 let accountId: string
 let selfPrincipalId: string | null
 let bobPrincipalId: string
+let wire: FileNodeWire
 
 beforeAll(async () => {
   const session = await getSession(BASE, auth)
@@ -43,6 +47,8 @@ beforeAll(async () => {
     Capabilities.principals
   ] as { currentUserPrincipalId?: string } | undefined
   selfPrincipalId = capability?.currentUserPrincipalId ?? null
+  // 0.16 and 1.0 spell a file node differently (`filenode-wire.ts`); the capability says which.
+  wire = fileNodeWire(session.accounts?.[accountId]?.accountCapabilities?.[Capabilities.fileNode])
 
   const responses = await client.call([
     [Methods.principalQuery.name, { accountId, filter: { email: 'bob@waxwing.test' } }, 'p0'],
@@ -97,7 +103,7 @@ describe('M5.18 · granting access to a file node', () => {
     const responses = await client.call([
       [
         Methods.fileNodeSet.name,
-        { accountId, create: { f: { name: FOLDER, nodeType: 'directory', parentId: null } } },
+        { accountId, create: { f: newDirectory(wire, { name: FOLDER, parentId: null }) } },
         'f0',
       ],
     ])
@@ -105,9 +111,10 @@ describe('M5.18 · granting access to a file node', () => {
     expect(nodeId).toBeTruthy()
   })
 
-  it('fills a PARTIAL grant out to all six rights — which `sharing.ts` relies on', async () => {
+  it('fills a PARTIAL grant out to every right — which `sharing.ts` relies on', async () => {
     // Sent: mayRead alone. Expected back: every right, the rest explicitly false. A client that
     // assumed the server echoes what it sent would mis-read every grant it did not write itself.
+    // Six rights on 0.16; 1.0 added a seventh, `maySetMetadata` (measured 2026-10-27).
     const responses = await client.call([
       [
         Methods.fileNodeSet.name,
@@ -124,6 +131,7 @@ describe('M5.18 · granting access to a file node', () => {
       mayDelete: false,
       mayModifyContent: false,
       mayShare: false,
+      ...(wire === 'typed' ? { maySetMetadata: false } : {}),
     })
   })
 
@@ -133,7 +141,8 @@ describe('M5.18 · granting access to a file node', () => {
       [Methods.fileNodeGet.name, { accountId, ids: [nodeId], properties: ['shareWith'] }, 'f1'],
     ])
     const node = responses.get<{ list: { shareWith: Record<string, unknown> }[] }>('f1').list[0]
-    expect(node?.shareWith).toEqual({})
+    // `{}` on 0.16, `null` on 1.0 — either way, nobody is left in it.
+    expect(Object.keys(node?.shareWith ?? {})).toEqual([])
   })
 
   it('cleans up after itself', async () => {

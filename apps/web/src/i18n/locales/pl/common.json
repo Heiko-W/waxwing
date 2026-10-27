@@ -1856,6 +1856,7 @@
     "searchPlaceholder": "Nazwa lub adres",
     "noMatches": "Nikt nie pasuje do tego zapytania.",
     "searchFailed": "Wyszukiwanie osób nie powiodło się.",
+    "directoryOff": "Wyszukiwanie osób jest wyłączone na tym serwerze. Poproś administratora o zezwolenie na zapytania do katalogu.",
     "roleLabel": "Może",
     "roleFor": "Co może robić {{name}}",
     "grant": "Dodaj",

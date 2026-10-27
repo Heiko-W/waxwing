@@ -6,14 +6,17 @@
  * against a plain fake port.
  */
 
-import type { CalendarEvent, ContactCard, FileNode, Id, PatchObject } from '@waxwing/jmap'
+import type { CalendarEvent, ContactCard, Id, PatchObject } from '@waxwing/jmap'
 import {
   creationRef,
+  FULL_FILE_RIGHTS,
   isMethodErrorType,
   type JmapClient,
   JmapMethodError,
   MethodErrorTypes,
   Methods,
+  NO_FILE_RIGHTS,
+  normalizeFileNodes,
 } from '@waxwing/jmap'
 import type { EmailEnvelopeInput } from '../db'
 import {
@@ -108,6 +111,15 @@ function mapSetErrors(errors: WireSetErrors): Record<string, PortSetError> {
 
 /** Adapt a connected {@link JmapClient} to the narrow, account-scoped {@link JmapPort}. */
 export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
+  /**
+   * What a file node with no `myRights` of its own, and no folder in the same batch to inherit from,
+   * is allowed. Stalwart 1.0 puts rights on directories only; in the user's OWN account everything is
+   * theirs, in a delegated one the folder that grants it may not be in this batch and "none" is what
+   * 0.16 reported for such a node as well. Read per call — the session is replaced on refresh.
+   */
+  const rootFileRights = () =>
+    client.session.accounts?.[accountId]?.isPersonal === true ? FULL_FILE_RIGHTS : NO_FILE_RIGHTS
+
   return {
     accountId,
 
@@ -628,7 +640,11 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
       const nodes = builder.invoke(Methods.fileNodeGet, { accountId, '#ids': query.ref('/ids') })
       const responses = await builder.send()
       const got = responses.get(nodes)
-      return { ids: responses.get(query).ids, list: got.list as FileNode[], state: got.state }
+      return {
+        ids: responses.get(query).ids,
+        list: normalizeFileNodes(got.list, rootFileRights()),
+        state: got.state,
+      }
     },
 
     async getFileNodes(ids) {
@@ -636,7 +652,7 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
       const handle = builder.invoke(Methods.fileNodeGet, { accountId, ids })
       const response = (await builder.send()).get(handle)
       return {
-        list: response.list as FileNode[],
+        list: normalizeFileNodes(response.list, rootFileRights()),
         notFound: response.notFound,
         state: response.state,
       }

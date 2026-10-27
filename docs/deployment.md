@@ -45,16 +45,19 @@ curl -u 'admin:PASSWORD' -X POST https://mail.example.com/jmap/ \
     "methodCalls": [["x:Application/set", {
       "create": {
         "waxwing": {
-          "enabled": true,
+          "enable": true,
           "description": "Waxwing webmail",
           "resourceUrl": "https://github.com/Heiko-W/waxwing/releases/latest/download/waxwing-stalwart.zip",
           "urlPrefix": { "/webmail": true },
-          "autoUpdateFrequency": 604800000
+          "autoUpdateInterval": 604800000
         }
       }
     }, "c1"]]
   }'
 ```
+
+This is the Stalwart **1.0** spelling; on 0.16 the fields are `enabled` and `autoUpdateFrequency`
+([the differences, in one table](#stalwart-10-and-016)).
 
 Restart Stalwart, open `https://mail.example.com/webmail/`, sign in. That is the installation.
 
@@ -65,11 +68,12 @@ The two fields that do it:
 - **`resourceUrl` points at `releases/latest/download/`**, whose asset name never changes.
   Every release publishes `waxwing-stalwart.zip` alongside the versioned
   `waxwing-stalwart-vX.Y.Z.zip`, precisely so this URL keeps resolving.
-- **`autoUpdateFrequency`** is milliseconds. `604800000` is a week; use `86400000` for daily.
+- **`autoUpdateInterval`** is milliseconds. `604800000` is a week; use `86400000` for daily.
+  (Stalwart 0.16 names it `autoUpdateFrequency`.)
   Stalwart re-fetches on that cycle and serves the new build.
 
 So a Waxwing release reaches your users without you doing anything. **Omit
-`autoUpdateFrequency` if you would rather not have that** — then Stalwart fetches once and
+`autoUpdateInterval` if you would rather not have that** — then Stalwart fetches once and
 holds still until you change `resourceUrl` yourself. Pinning a version is the same idea:
 point `resourceUrl` at `…/download/waxwing-stalwart-v0.25.1.zip` and it stays there.
 
@@ -113,13 +117,13 @@ Neither check says the code is *good*; both say where it came from. See
 [`SECURITY.md`](../SECURITY.md) §4.
 
 **If you would rather not accept future builds sight unseen**, do not use
-`releases/latest/download/` plus `autoUpdateFrequency`. That combination is a standing decision
+`releases/latest/download/` plus `autoUpdateInterval`. That combination is a standing decision
 to run whatever this project publishes next, in your users' browsers, against their mailboxes.
 Pin instead:
 
 ```jsonc
 "resourceUrl": "https://github.com/Heiko-W/waxwing/releases/download/v0.25.1/waxwing-stalwart-v0.25.1.zip"
-// and omit autoUpdateFrequency entirely
+// and omit autoUpdateInterval entirely
 ```
 
 Then upgrading is a deliberate act: verify the new artefact with both checks above, change the
@@ -149,14 +153,87 @@ they were probed against a live server:
   archive, and every path under it 404s silently — no log line, nothing unpacked. The same
   artefact under `/webmail` works. (This cost a day; it is recorded as B43.)
 - **Stalwart fetches the archive at STARTUP**, not when you register it. Restart the server, or
-  wait for `autoUpdateFrequency`, before concluding that anything is wrong.
+  wait for `autoUpdateInterval`, before concluding that anything is wrong.
 - **`resourceUrl` keeps its `.zip` extension.** Stalwart fetches it with a 60 s timeout and
   refuses bundles over 100 MiB (Waxwing's is well under 1 MiB).
-- **`autoUpdateFrequency`** is optional. Set it and Stalwart re-fetches the URL on that
+- **`autoUpdateInterval`** is optional. Set it and Stalwart re-fetches the URL on that
   schedule, which is how you ship an update without touching the registry again.
 
 **Step 3 — open `https://mail.example.com/webmail/`.** Waxwing finds the JMAP session document
 at the same origin and you sign in.
+
+### Stalwart 1.0 and 0.16
+
+Waxwing runs on both. The server side differs in six places that matter to a deployer — each
+**measured** on a fixture of 0.16.27 and 1.0.0, not read off a changelog:
+
+| | Stalwart 0.16 | Stalwart 1.0 |
+| --- | --- | --- |
+| Application: switch | `enabled` | `enable` |
+| Application: re-fetch cycle | `autoUpdateFrequency` (ms) | `autoUpdateInterval` (ms) |
+| What the bundle must contain | `index.html` | `index.html` **and `stalwart-app.json`** — without it the server logs *"Application bundle does not contain a manifest"* and serves nothing, while `UpdateApps` still reports success |
+| OAuth client | any `client_id` is taken (Waxwing sent `waxwing`) | an unknown client is refused with *"Unknown client id"* |
+| Looking up other users (sharing, recipient suggestions) | on | **off** until `Sharing.allowDirectoryQueries` is set |
+| OAuth sessions after the server was migrated from 0.16 | — | tokens are not migrated: users sign in again |
+
+**The bundle.** Waxwing's release zip carries `stalwart-app.json` and `oauth-client.json` from
+v0.26 on. Releases before that **cannot be installed on a 1.0 server** — `waxwing-stalwart.zip` under
+`releases/latest/` is the one to point at, and with `autoUpdateInterval` set an existing
+installation picks the new build up on its own. **Upgrade Waxwing first, then the server**: a server
+migrated while it still holds the old bundle comes up with no webmail until the next fetch.
+
+**OAuth sign-in.** Nothing to configure when Waxwing is served as an Application on the server's own
+hostname over HTTPS: the server recognises the bundle by its `oauth-client.json`, and the app derives
+the same client id (`https://mail.example.com/webmail/oauth-client.json`) from where it is mounted.
+Everywhere else — the reverse-proxy and CDN deployments, a different hostname, or plain HTTP — the
+server does not recognise the app and has to be told, with an `OAuthClient` whose id and redirect are
+the two strings the app derives from its own address:
+
+```sh
+curl -u 'admin:PASSWORD' -X POST https://mail.example.com/jmap/ \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"],
+    "methodCalls": [["x:OAuthClient/set", {
+      "create": {
+        "waxwing": {
+          "clientId": "https://webmail.example.com/oauth-client.json",
+          "description": "Waxwing webmail",
+          "redirectUris": { "https://webmail.example.com/oauth/callback": true },
+          "firstParty": true
+        }
+      }
+    }, "c1"]]
+  }'
+```
+
+`firstParty` gives the token the account's full permissions, which the **Security** section
+(app passwords, language of server messages) needs: without it the server leaves its
+self-service interface out of the session and Waxwing hides that section rather than showing
+controls that cannot work. If you would rather grant less, omit it and list `scopes` instead
+(`mail`, `contacts`, `calendars`, `files`) — the app asks for all four and uses what it gets.
+Either way Stalwart 1.0 shows the user a consent screen once per sign-in before the password form.
+
+**Directory queries.** On 0.16 any user could look up any other; 1.0 turned that off. With it off,
+`Principal/query` answers *"The administrator has disabled directory queries."* — so the people
+picker in every share dialog finds nobody, and the composer's colleague suggestions stay empty
+(Waxwing treats the refusal as "no suggestions", and says so in the share dialogs). Switch it on
+if you want sharing between accounts on the server:
+
+```sh
+curl -u 'admin:PASSWORD' -X POST https://mail.example.com/jmap/ \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"],
+    "methodCalls": [
+      ["x:Sharing/set", { "update": { "singleton": { "allowDirectoryQueries": true } } }, "c1"],
+      ["x:Action/set", { "create": { "r": { "@type": "ReloadSettings" } } }, "c2"]
+    ]
+  }'
+```
+
+Stalwart's documentation advises this only in a controlled environment: the directory it exposes
+includes every account on the server. A server that hosts unrelated tenants should leave it off.
 
 ### What Stalwart rewrites, and why the app depends on it
 
@@ -494,7 +571,7 @@ on every upgrade, which is the usual reason not to.
 ## Upgrading
 
 1. Publish the new artefact.
-2. Stalwart Application: re-`set` the `resourceUrl`, or let `autoUpdateFrequency` do it.
+2. Stalwart Application: re-`set` the `resourceUrl`, or let `autoUpdateInterval` do it.
    Reverse proxy: unpack over the docroot.
 3. Users get the update on their next visit. The service worker installs in the background
    and Waxwing offers a reload — it does not swap the app out from under someone mid-message.

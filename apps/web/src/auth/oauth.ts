@@ -14,7 +14,11 @@
 import * as oauth from 'oauth4webapi'
 import type { DiscoveryAlgorithm } from './types'
 
-/** Default public client id. Stalwart requires no pre-registration by default. */
+/**
+ * Public client id for a server that does not identify web apps by a document: Stalwart 0.16
+ * requires no pre-registration and takes any. Stalwart 1.0 refuses it ("Unknown client id") —
+ * there the controller uses the app's own client document instead, see {@link applicationClientId}.
+ */
 export const DEFAULT_CLIENT_ID = 'waxwing'
 
 /**
@@ -23,6 +27,71 @@ export const DEFAULT_CLIENT_ID = 'waxwing'
  * validation is needed and the `oauth2` discovery path stays clean.
  */
 export const DEFAULT_SCOPES = ['urn:ietf:params:oauth:scope:mail', 'offline_access']
+
+/**
+ * Scopes for the parts of the app beyond mail. Requested only from a server that lists them in
+ * `scopes_supported` AND identifies the app by a client document (Stalwart 1.0): there the scope set
+ * is part of what the user consents to, so it has to name what Waxwing actually uses. A 0.16 token
+ * carries the same access whatever is asked, so nothing is added there.
+ */
+export const EXTRA_SCOPES = [
+  'urn:ietf:params:oauth:scope:contacts',
+  'urn:ietf:params:oauth:scope:calendars',
+  'urn:ietf:params:oauth:scope:files',
+]
+
+/** The file in the Stalwart bundle that names the app to the server (`scripts/release.mjs`). */
+export const APP_CLIENT_DOCUMENT = 'oauth-client.json'
+
+/**
+ * Where the browser comes back to, relative to the app's base. **Not the base itself**: the
+ * bundle's `oauth-client.json` lists its redirect URIs as relative paths and an empty one is
+ * invalid. Stalwart's own WebUI uses the same `oauth/callback`.
+ */
+export const APP_CALLBACK_PATH = 'oauth/callback'
+
+function withoutQuery(baseUri: string): URL {
+  const url = new URL(baseUri)
+  url.search = ''
+  url.hash = ''
+  return url
+}
+
+/**
+ * The client id of an app that Stalwart 1.0 serves from its own bundle: the URL of its
+ * `oauth-client.json` — `https://mail.example.com/webmail/oauth-client.json` for an app mounted at
+ * `/webmail/`. The server answers that URL itself, with the document resolved against the host the
+ * request came in on, so the id is right under any mount prefix without being configured.
+ */
+export function applicationClientId(baseUri: string): string {
+  return new URL(APP_CLIENT_DOCUMENT, withoutQuery(baseUri)).href
+}
+
+/** {@link APP_CALLBACK_PATH} under the app's base. */
+export function applicationRedirectUri(baseUri: string): string {
+  return new URL(APP_CALLBACK_PATH, withoutQuery(baseUri)).href
+}
+
+/** True when `href` is the dedicated callback page of the app mounted at `baseUri`. */
+export function isApplicationCallback(href: string, baseUri: string): boolean {
+  return new URL(href).pathname === new URL(applicationRedirectUri(baseUri)).pathname
+}
+
+/**
+ * Does the server identify web apps by a client document? (Client ID Metadata Documents,
+ * draft-ietf-oauth-client-id-metadata-document.) Stalwart 1.0 says so in its discovery document;
+ * 0.16 does not, and still takes any client id.
+ */
+export function supportsClientDocuments(as: oauth.AuthorizationServer): boolean {
+  return as.client_id_metadata_document_supported === true
+}
+
+/** `scopes` plus whichever of {@link EXTRA_SCOPES} the server lists and the request lacks. */
+export function withExtraScopes(scopes: string[], as: oauth.AuthorizationServer): string[] {
+  const supported = Array.isArray(as.scopes_supported) ? as.scopes_supported : []
+  const extra = EXTRA_SCOPES.filter((scope) => supported.includes(scope) && !scopes.includes(scope))
+  return [...scopes, ...extra]
+}
 
 /** A fully-resolved OAuth config (every field defaulted/derived by the controller). */
 export interface ResolvedOAuthConfig {

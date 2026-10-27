@@ -33,7 +33,7 @@ import { Check, UserMinus, UserPlus } from 'lucide-react'
 import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Dialog, EmptyState, SectionLabel, Select, Spinner, TextInput } from '../ui'
-import { principalLabel } from './principals'
+import { directoryIsOff, principalLabel } from './principals'
 import type { RightsMap, RoleModel, ShareRole, ShareRoleOrCustom } from './roles'
 import styles from './sharing.module.css'
 
@@ -117,6 +117,8 @@ export function ShareDialog<R extends RightsMap<R>>({
   const [query, setQuery] = useState('')
   const [found, setFound] = useState<Principal[] | null>(null)
   const [searchFailed, setSearchFailed] = useState(false)
+  // Apart from `searchFailed` on purpose: a failure is worth retrying, a switched-off directory is not.
+  const [directoryOff, setDirectoryOff] = useState(false)
   /*
    * The role the Add button will grant. Seeded from the MODEL rather than from the word "viewer":
    * a calendar's least role is `freeBusy`, and a picker that opened on "View" would make the safe
@@ -147,17 +149,20 @@ export function ShareDialog<R extends RightsMap<R>>({
           const principals = await client.searchPrincipals(query)
           if (cancelled) return
           setSearchFailed(false)
+          setDirectoryOff(false)
           setFound(principals)
           setNames((current) => {
             const next = { ...current }
             for (const principal of principals) next[principal.id] = principalLabel(principal)
             return next
           })
-        } catch {
+        } catch (error) {
           // NOT `setFound([])`. Turning a failed request into an empty result told the reader
           // "Nobody matches that", so they concluded the person did not exist and gave up — the
           // one outcome from which there is no way back.
-          if (!cancelled) setSearchFailed(true)
+          if (cancelled) return
+          if (directoryIsOff(error)) setDirectoryOff(true)
+          else setSearchFailed(true)
         }
       })()
     }, SEARCH_DELAY_MS)
@@ -324,7 +329,9 @@ export function ShareDialog<R extends RightsMap<R>>({
               generic wording could carry. */}
             <p className={styles.shareHint}>{t(`sharing.explain.${kind}.${addRole}`)}</p>
 
-            {searchFailed ? (
+            {directoryOff ? (
+              <EmptyState title={t('sharing.directoryOff')} density="compact" />
+            ) : searchFailed ? (
               <EmptyState tone="error" title={t('sharing.searchFailed')} density="compact" />
             ) : found === null ? (
               <div className={styles.loading}>

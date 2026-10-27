@@ -1837,6 +1837,7 @@
     "searchPlaceholder": "Nome o indirizzo",
     "noMatches": "Nessuna corrispondenza.",
     "searchFailed": "La ricerca delle persone non è riuscita.",
+    "directoryOff": "La ricerca delle persone è disattivata su questo server. Chiedi a chi lo gestisce di consentire le query sulla rubrica.",
     "roleLabel": "Permessi",
     "roleFor": "Che cosa può fare {{name}}",
     "grant": "Aggiungi",
