@@ -211,7 +211,7 @@ describe('M4.4 · a delegated account grants mailboxes, not sending (ADR-020)', 
       )?.[0] ?? null
   })
 
-  it('advertises submission on the shared account — and that advertisement is not permission', async () => {
+  it('never grants submission on the shared account — whether or not it advertises it', async () => {
     if (sharedAccountId === null) {
       // Not `return`: a silently skipped test is indistinguishable from a passing one, which is the
       // very failure mode B22 is about. Say it, so a run without delegation reads as what it is.
@@ -220,16 +220,24 @@ describe('M4.4 · a delegated account grants mailboxes, not sending (ADR-020)', 
       return
     }
     const account = client.session.accounts?.[sharedAccountId]
-    // The trap in one assertion: the capability IS there.
-    expect(Object.keys(account?.accountCapabilities ?? {})).toContain(Capabilities.submission)
+    // The trap, as 0.16 sets it: the capability IS advertised on the shared account. Stalwart 1.0
+    // closed it — measured 2026-10-27, a shared account lists neither `submission`, `vacationresponse`,
+    // `sieve`, `quota` nor `emailpush` — so the advertisement is reported, not asserted. The decision
+    // (ADR-020) rests on the refusal below, which holds on both.
+    const advertised = Object.keys(account?.accountCapabilities ?? {}).includes(
+      Capabilities.submission,
+    )
+    console.info(`[ADR-020] submission advertised on the shared account: ${advertised}`)
 
-    // …and the submission-shaped call is refused all the same. `call` surfaces a METHOD-level error
+    // The submission-shaped call is refused either way. `call` surfaces a METHOD-level error
     // in the response rather than throwing, so the refusal is read from the invocation itself.
     const responses = await client.call([
       ['Identity/get', { accountId: sharedAccountId, ids: null }, '0'],
     ])
     const [name, args] = responses.responses[0] ?? ['', {}]
     expect(name).toBe('error')
-    expect(JSON.stringify(args)).toMatch(/forbidden/i)
+    // `forbidden` on 0.16; on 1.0, which no longer advertises submission here, the same call is
+    // `accountNotSupportedByMethod` (RFC 8620 §3.6.2). Either way it is a refusal.
+    expect(JSON.stringify(args)).toMatch(/forbidden|accountNotSupportedByMethod/i)
   })
 })
