@@ -221,9 +221,15 @@ test.describe('M4.2 contacts suite', () => {
     expect(media.length, 'the card carries a photo — the save was not silently dropped').toBe(1)
     const photo = media[0]
     expect(photo?.kind).toBe('photo')
-    // Inline, never a blobId: that is the format this server accepts.
-    expect(photo?.uri ?? '').toMatch(/^data:image\/png;base64,/)
-    expect(photo?.blobId, 'Stalwart rejects blobIds in media').toBeUndefined()
+    // What comes BACK differs by server, what Waxwing SENDS does not (an inline `data:` URI):
+    //  - Stalwart 0.16 stores the URI as given and rejects a `blobId` in media outright;
+    //  - Stalwart 1.0 moves the bytes into blob storage and answers with `blobId` + `mediaType`
+    //    and no `uri` (measured 2026-10-27, 1.0.0). The detail pane below renders either.
+    if (photo?.blobId === undefined) {
+      expect(photo?.uri ?? '').toMatch(/^data:image\/png;base64,/)
+    } else {
+      expect(photo.mediaType).toBe('image/png')
+    }
 
     // …and it comes back out: reopen the saved card and the detail pane paints the photo rather
     // than the initials fallback.

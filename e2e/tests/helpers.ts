@@ -48,6 +48,32 @@ export const SYNC_POLL: { timeout: number; intervals: number[] } = {
 }
 
 /**
+ * Fill Stalwart's own sign-in page after the app has sent the browser there (the OAuth redirect).
+ *
+ * **1.0 asks for consent BEFORE it asks for a password.** "Authorize access — An application is
+ * requesting access to your account", with Deny / Allow, appears first for every client that is not
+ * one of the server's own bundled apps — the fixture's registered client included, first-party or
+ * not (measured on v1.0.0). 0.16 went straight to the form. So the page is either one: wait for
+ * whichever shows, accept the consent if that is what came, then sign in. Reading the page text
+ * rather than assuming an order is what keeps one test valid against both servers.
+ */
+export async function signInAtServer(
+  page: Page,
+  credentials: { user: string; pass: string },
+): Promise<void> {
+  // `:visible`, not just `#username`: on 1.0 the sign-in form is in the page the whole time, hidden
+  // behind the consent screen, and a bare locator resolves to that hidden input and waits for it
+  // until the test times out.
+  const username = page.locator('#username:visible')
+  const allow = page.getByRole('button', { name: 'Allow', exact: true })
+  await username.or(allow).first().waitFor()
+  if (await allow.isVisible()) await allow.click()
+  await username.fill(credentials.user)
+  await page.locator('#password').fill(credentials.pass)
+  await page.locator('#login-form button[type="submit"]').click()
+}
+
+/**
  * Override the app's `undoSendSeconds` for this page by intercepting `config.json` (deep-merged over
  * the built-in defaults, so branding/auth are untouched). Call BEFORE navigating.
  */

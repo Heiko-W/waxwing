@@ -197,6 +197,21 @@ test.describe('M2.9 write suite', () => {
     return created.id
   }
 
+  /**
+   * Wait until the server's search index has the message. Stalwart 1.0 indexes ASYNCHRONOUSLY (an
+   * index queue with its own retries): a draft stored a moment ago is not yet found by `text`, and
+   * 0.16 indexed inline, so a one-shot query right after the store used to be safe. The wait is the
+   * point of the test, not a patch over it — the assertion that follows ("nothing is left on the
+   * server") is only meaningful against a query that has been seen to find the message.
+   */
+  async function expectIndexed(account: ReturnType<typeof jmapAs>, token: string): Promise<void> {
+    await expect
+      .poll(async () => (await account.query(token, ['subject'])).length, {
+        timeout: SYNC_BUDGET_MS,
+      })
+      .toBe(1)
+  }
+
   /** The Drafts-folder row for `subject`, opened into the composer. */
   async function openSeededDraft(page: import('@playwright/test').Page, subject: string) {
     await openFolder(page, /Drafts/)
@@ -214,7 +229,7 @@ test.describe('M2.9 write suite', () => {
     // The search has to FIND it first. Without this the assertion below passes on a query that
     // matches nothing — which is exactly how this test was green while the bug was still there.
     // (`WRITE_PREFIX` is not searchable on its own: `[wwrite]` does not survive tokenisation.)
-    expect(await alice.query(token, ['subject'])).toHaveLength(1)
+    await expectIndexed(alice, token)
 
     await login(page, CREDENTIALS.alice)
     await openSeededDraft(page, subject)
@@ -233,7 +248,7 @@ test.describe('M2.9 write suite', () => {
     const subject = `${WRITE_PREFIX} ${token}`
     await seedServerDraft(subject)
     const alice = jmapAs(ACCOUNTS.alice)
-    expect(await alice.query(token, ['subject'])).toHaveLength(1)
+    await expectIndexed(alice, token)
 
     await login(page, CREDENTIALS.alice)
     await openSeededDraft(page, subject)
