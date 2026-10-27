@@ -73,7 +73,7 @@ you can check what you are upgrading to:
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing                       # arrived intact
 gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
-  --source-ref refs/tags/v0.25.1                               # built here, from THAT TAG
+  --source-ref refs/tags/v0.26.0                               # built here, from THAT TAG
 ```
 
 `--ignore-missing` because `SHA256SUMS` lists all three artefacts and you downloaded one;
@@ -109,13 +109,33 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.25.1 — feature-complete, and deliberately not 1.0 yet.**
+**v0.26.0 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: 5 982 unit tests, 20
-integration tests against a live Stalwart, and 255 end-to-end tests across the **seven** Playwright
-suites the gate runs. The seventh is WebKit, which used to run beside the gate rather than in it —
-see below. Performance and accessibility are measured rather than asserted — the numbers are in the
-[implementation plan](docs/implementation-plan.md).
+Every planned work package is done and the release gate is signed off: 6 043 unit tests, 20
+integration tests against a live Stalwart, and 257 end-to-end tests across the **seven** Playwright
+suites the gate runs (255 on Stalwart 0.16.27, where the two tests about signed-in apps have
+nothing to test). Performance and accessibility are measured rather than asserted — the numbers are
+in the [implementation plan](docs/implementation-plan.md).
+
+**v0.26.0 runs on Stalwart 1.0 and on 0.16.27, and the same suites are green on both.** Stalwart
+1.0.0 shipped on 26 October 2026 and its release notes name almost nothing a client sees. Run
+against the same fixture, **eight things broke or changed**, two of them badly: the release bundle
+could not be installed at all (1.0 refuses a bundle without `stalwart-app.json`, and reports success
+while it does), and **signing in with OAuth stopped working** (1.0 answers `client_id=waxwing` with
+"Unknown client id"). The Files screen, the calendar month and shared address books and calendars
+broke too, and the people search in the share dialogs finds nobody until an administrator allows
+directory queries. All of it is fixed and tested; [ADR-048](docs/adr/048-stalwart-1-0-is-a-second-baseline.md)
+has the table. **If you run Stalwart, upgrade Waxwing before you migrate it to 1.0** — a migrated
+server that still holds an older bundle has no webmail until the next fetch. The CI now runs the
+whole gate against both servers.
+
+New with 1.0, in **Settings → Account & security**: the apps signed in to your account — what each
+may reach, when it was last used, from where — and a **Sign out** for each. Signing out of Waxwing
+now also revokes the token on a 1.0 server, which Stalwart 0.16 could not do (checked against a
+real server: the sign-in's grant is gone from the account afterwards). Searching for a word inside
+a PDF attachment works on 1.0 without any change here — the server indexes attachment contents
+now (its notes list Office, OpenDocument, EPUB and RTF too; the PDF is what was measured), and
+Waxwing's search asks it.
 
 **v0.25.1 is compatible with Stalwart up to v0.16.25.** The end-to-end suites now run against
 Stalwart v0.16.25 (they ran against v0.16.18). The first run found one break that no Stalwart
