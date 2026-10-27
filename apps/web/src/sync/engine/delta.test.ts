@@ -1,4 +1,5 @@
 import type { Calendar, CalendarEvent, FileNode, Mailbox } from '@waxwing/jmap'
+import { JmapMethodError } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { EmailEnvelopeInput, ReplicaDb } from '../db'
 import {
@@ -1398,12 +1399,107 @@ describe('the calendar window', () => {
     expect(await getSyncState(db, ACC, 'CalendarEvent')).toBe('v1')
   })
 
+  it('asks an EXPANDED query for one calendar at a time — Stalwart 1.0 takes a single condition', async () => {
+    // Measured on 1.0.0: `AND[window, OR[inCalendar…]]` with `expandRecurrences` is refused
+    // ("The filter must be a single FilterCondition when expanding recurrences") and the month does
+    // not load. 0.16 took it; this shape both take. The UNEXPANDED query keeps the operator form.
+    const window = { after: '2026-10-26T00:00:00.000Z', before: '2026-12-07T00:00:00.000Z' }
+    const expandedFilters: unknown[] = []
+    const objectFilters: unknown[] = []
+    const port = fakePort({
+      queryCalendarEvents: async (spec) => {
+        if (spec.expandRecurrences !== true) {
+          objectFilters.push(spec.filter)
+          return { ids: ['e1'], queryState: 'q', canCalculateChanges: false, position: 0 }
+        }
+        expandedFilters.push(spec.filter)
+        const calendar = (spec.filter as { inCalendar?: string }).inCalendar
+        // The same event in both calendars, as a shared one is — it must be fetched once.
+        const ids = calendar === 'c1' ? ['occ-1', 'occ-shared'] : ['occ-2', 'occ-shared']
+        return { ids, queryState: `q-${calendar}`, canCalculateChanges: false, position: 0 }
+      },
+      getCalendarEvents: async (ids, expanded) => ({
+        list: expanded ? ids.map((id) => occurrence(id, 'e1')) : [occurrence('e1')],
+        notFound: [],
+        state: 'v1',
+      }),
+    })
+    const filter = {
+      operator: 'AND' as const,
+      conditions: [
+        window,
+        { operator: 'OR' as const, conditions: [{ inCalendar: 'c1' }, { inCalendar: 'c2' }] },
+      ],
+    }
+
+    await fullRequeryCalendar(port, db, ACC, 'august', { filter }, clock)
+
+    expect(expandedFilters).toEqual([
+      { ...window, inCalendar: 'c1' },
+      { ...window, inCalendar: 'c2' },
+    ])
+    expect(objectFilters).toEqual([filter])
+    expect((await getCalendarQueryCache(db, ACC, 'august'))?.ids).toEqual([
+      'occ-1',
+      'occ-shared',
+      'occ-2',
+    ])
+  })
+
+  it('does NOT overwrite a good window when the identity half fails on the network', async () => {
+    // The end-to-end suite lost this race against Stalwart 1.0: a refetch started online, the network
+    // went away between its two halves, "Failed to fetch" was swallowed, and the window was stored
+    // with `objectIds: []` over a good one. Every event on it then read as untraceable.
+    let objectQueries = 0
+    const answering = fakePort({
+      queryCalendarEvents: async (spec) => ({
+        ids: spec.expandRecurrences === true ? ['e1'] : ['e1'],
+        queryState: 'q',
+        canCalculateChanges: false,
+        position: 0,
+      }),
+      getCalendarEvents: async (ids, expanded) => ({
+        list: ids.map((id) => occurrence(id, expanded ? 'e1' : undefined)),
+        notFound: [],
+        state: 'v1',
+      }),
+    })
+    await fullRequeryCalendar(answering, db, ACC, 'august', { filter: WINDOW_FILTER }, clock)
+    expect((await getCalendarQueryCache(db, ACC, 'august'))?.objectIds).toEqual(['e1'])
+
+    const dropping = fakePort({
+      queryCalendarEvents: async (spec) => {
+        if (spec.expandRecurrences !== true) {
+          objectQueries += 1
+          throw new TypeError('Failed to fetch')
+        }
+        return { ids: ['e1'], queryState: 'q', canCalculateChanges: false, position: 0 }
+      },
+      getCalendarEvents: async (ids) => ({
+        list: ids.map((id) => occurrence(id, 'e1')),
+        notFound: [],
+        state: 'v2',
+      }),
+    })
+
+    await expect(
+      fullRequeryCalendar(dropping, db, ACC, 'august', { filter: WINDOW_FILTER }, clock),
+    ).rejects.toThrow('Failed to fetch')
+
+    expect(objectQueries).toBe(1)
+    const row = await getCalendarQueryCache(db, ACC, 'august')
+    expect(row?.objectIds, 'the good identity half survived').toEqual(['e1'])
+  })
+
   it('still draws the month when the identity half is refused', async () => {
     // A month that reads but cannot be edited beats no month at all — the same trade the online
     // client has made since K-2.
     const port = fakePort({
       queryCalendarEvents: async (spec) => {
-        if (spec.expandRecurrences !== true) throw new Error('unsupported')
+        // What a server that refuses the identity half really sends: a method-level error.
+        if (spec.expandRecurrences !== true) {
+          throw new JmapMethodError({ type: 'unsupportedFilter' }, '0', 'CalendarEvent/query')
+        }
         return { ids: ['occ-1'], queryState: 'q', canCalculateChanges: false, position: 0 }
       },
       getCalendarEvents: async (ids) => ({

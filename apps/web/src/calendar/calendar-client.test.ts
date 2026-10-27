@@ -808,6 +808,26 @@ describe('the calendars a range query asks about', () => {
     (calls.find(([name]) => name === 'CalendarEvent/query')?.[1] as { filter: unknown })
       .filter as Record<string, unknown>
 
+  /** Every EXPANDED query's filter, in the order sent. */
+  const expandedFiltersOf = (calls: Invocation[]): unknown[] =>
+    calls
+      .filter(
+        ([name, args]) =>
+          name === 'CalendarEvent/query' &&
+          (args as { expandRecurrences?: boolean }).expandRecurrences === true,
+      )
+      .map(([, args]) => (args as { filter: unknown }).filter)
+
+  /** The filter of the UNEXPANDED companion query. */
+  const unexpandedFilterOf = (calls: Invocation[]): unknown =>
+    (
+      calls.find(
+        ([name, args]) =>
+          name === 'CalendarEvent/query' &&
+          (args as { expandRecurrences?: boolean }).expandRecurrences === undefined,
+      )?.[1] as { filter: unknown }
+    ).filter
+
   it('NAMES the visible calendars — the parameter that had no caller', async () => {
     /*
      * K-1's whole point. `eventsInRange` has taken `calendarIds` since M5.6 and nothing ever passed
@@ -817,13 +837,22 @@ describe('the calendars a range query asks about', () => {
     const { client, calls } = fakeClient({ occurrences: [SYNTHETIC], objects: [REAL] })
     await makeCalendarClient(client, ACC).eventsInRange(FROM, TO, ['c1', 'c2'])
 
-    expect(filterOf(calls)).toEqual({
+    const window = { after: FROM.toISOString(), before: TO.toISOString() }
+    // The companion that addresses real objects keeps the operator form — both servers take it…
+    expect(unexpandedFilterOf(calls)).toEqual({
       operator: 'AND',
       conditions: [
-        { after: FROM.toISOString(), before: TO.toISOString() },
+        window,
         { operator: 'OR', conditions: [{ inCalendar: 'c1' }, { inCalendar: 'c2' }] },
       ],
     })
+    // …but an EXPANDED query is one condition per calendar: Stalwart 1.0 refuses the operator form
+    // with "The filter must be a single FilterCondition when expanding recurrences", and with it
+    // the whole month ("The calendar could not be loaded").
+    expect(expandedFiltersOf(calls)).toEqual([
+      { ...window, inCalendar: 'c1' },
+      { ...window, inCalendar: 'c2' },
+    ])
   })
 
   it('spells it `inCalendar`, singular — `inCalendars` fails the whole query', async () => {
@@ -852,17 +881,28 @@ describe('the calendars a range query asks about', () => {
     const { client, calls } = fakeClient({ occurrences: [SYNTHETIC], objects: [REAL] })
     await makeCalendarClient(client, ACC).eventsInRange(FROM, TO, ['c1'])
 
-    const queries = calls.filter(([name]) => name === 'CalendarEvent/query')
-    expect((queries[0]?.[1] as { filter: unknown }).filter).toEqual(
-      (queries[1]?.[1] as { filter: unknown }).filter,
-    )
+    const named = (filter: unknown): string[] =>
+      JSON.stringify(filter)
+        .match(/"inCalendar":"[^"]+"/g)
+        ?.sort() ?? []
+    expect(named(expandedFiltersOf(calls))).toEqual(named(unexpandedFilterOf(calls)))
+    expect(named(expandedFiltersOf(calls))).toEqual(['"inCalendar":"c1"'])
   })
 
   it('asks for every calendar when the caller names none', async () => {
     const { client, calls } = fakeClient({ occurrences: [SYNTHETIC], objects: [REAL] })
     await makeCalendarClient(client, ACC).eventsInRange(FROM, TO)
 
-    expect(filterOf(calls)).toEqual({ after: FROM.toISOString(), before: TO.toISOString() })
+    const window = { after: FROM.toISOString(), before: TO.toISOString() }
+    expect(expandedFiltersOf(calls)).toEqual([window])
+    expect(unexpandedFilterOf(calls)).toEqual(window)
+  })
+
+  it('draws an event that lives in two calendars once', async () => {
+    // Each calendar is asked separately now, so a shared event is answered by both queries.
+    const { client } = fakeClient({ occurrences: [SYNTHETIC], objects: [REAL] })
+    const events = await makeCalendarClient(client, ACC).eventsInRange(FROM, TO, ['c1', 'c2'])
+    expect(events.map((placed) => placed.event.id)).toEqual(['eaaaaa0'])
   })
 
   it('asks for NOTHING when every calendar is hidden, without a round trip', async () => {

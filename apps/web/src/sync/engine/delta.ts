@@ -19,6 +19,7 @@ import type {
   Id,
   Mailbox,
 } from '@waxwing/jmap'
+import { JmapMethodError, JmapProblemError } from '@waxwing/jmap'
 import type {
   CalendarQueryCacheRow,
   ContactQueryCacheRow,
@@ -62,6 +63,7 @@ import {
   setSyncState,
   unsentOutbox,
 } from '../repo'
+import { expandedQueries } from './calendar-window'
 import {
   CannotCalculateChangesError,
   ChangesDrainStalledError,
@@ -969,7 +971,15 @@ export async function fullRequeryCalendar(
   clock: EngineClock,
 ): Promise<void> {
   const filter = spec.filter ?? null
-  const query = await port.queryCalendarEvents({ filter, expandRecurrences: true })
+  // One query per calendar, because an expanded query takes a single condition — see
+  // `calendar-window.ts`. In parallel; the ids are merged in first-seen order, and an event that
+  // lives in two calendars is asked for once.
+  const queries = await Promise.all(
+    expandedQueries(filter).map((single) =>
+      port.queryCalendarEvents({ filter: single, expandRecurrences: true }),
+    ),
+  )
+  const query = { ids: [...new Set(queries.flatMap((answer) => answer.ids))] }
   const occurrences = await port.getCalendarEvents(query.ids, true)
 
   let objectIds: Id[] = []
@@ -978,7 +988,22 @@ export async function fullRequeryCalendar(
     const objectQuery = await port.queryCalendarEvents({ filter })
     objectIds = objectQuery.ids
     objects = (await port.getCalendarEvents(objectIds, false)).list
-  } catch {
+  } catch (error) {
+    /*
+     * ONLY A REFUSAL IS "BEST EFFORT". A server that answers the identity half with a method error or
+     * a problem document has said no, and a month that reads but cannot be edited is the better
+     * outcome than no month. A connection that DROPPED mid-way has said nothing — and swallowing it
+     * stored the window as complete with `objectIds: []`, overwriting a good one: every event on it
+     * then read as "an occurrence that cannot be traced back to a stored event", viewable but not
+     * editable, until something happened to refetch it.
+     *
+     * Found by the end-to-end suite against Stalwart 1.0 and not by anything older: "Failed to
+     * fetch", from a refetch that straddled the moment the test switched the network off. The race
+     * is not 1.0's — it was only never lost on 0.16 — so the fix is not conditional on a server. A
+     * rethrow fails the pass and leaves the previous window, and its flag, exactly as they were; the
+     * next pass retries.
+     */
+    if (!(error instanceof JmapMethodError || error instanceof JmapProblemError)) throw error
     objectIds = []
     objects = []
   }
