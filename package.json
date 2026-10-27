@@ -1,6 +1,6 @@
 {
   "name": "waxwing",
-  "version": "0.25.1",
+  "version": "0.26.0",
   "private": true,
   "type": "module",
   "description": "A serverless (static-only) webmail client for JMAP.",
@@ -64,6 +64,6 @@
     "fake-indexeddb": "6.2.5",
     "size-limit": "12.1.0",
     "typescript": "6.0.3",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   }
 }

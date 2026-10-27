@@ -1,6 +1,6 @@
 {
   "name": "@waxwing/mail-html",
-  "version": "0.25.1",
+  "version": "0.26.0",
   "private": true,
   "type": "module",
   "description": "HTML-mail sanitizer pipeline + sandboxed iframe renderer.",
@@ -20,7 +20,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "dompurify": "^3.4.16"
+    "dompurify": "^3.4.17"
   },
   "devDependencies": {
     "jsdom": "^29.1.1",
