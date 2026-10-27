@@ -675,10 +675,13 @@ Settings that traditionally require webmail-server plugins come free with Stalwa
 - **NFR-COMPAT-01 (Must)** — Evergreen: last 2 major versions of Chrome/Edge/Firefox,
   Safari ≥ 17 (macOS/iOS). PWA install paths documented per platform (iOS quirks
   included: Web Push requires the app to be added to the home screen).
-- **NFR-COMPAT-02 (Must)** — **Server baseline: Stalwart v0.16.x** (current stable at
-  spec time) — development and CI test against it. If the upcoming Stalwart v1.0 ships
-  changes Waxwing needs, the baseline is raised to v1.0; otherwise v0.16 remains the
-  supported minimum. Other JMAP servers per FR-SRV-01/02 (best effort).
+- **NFR-COMPAT-02 (Must)** — **Server baseline: Stalwart v1.0 and v0.16.27** — development
+  and CI test against both, and the same suites are green on each. (Written against v0.16.x
+  as "current stable at spec time", with the clause that v1.0 would raise the baseline if it
+  shipped changes Waxwing needs. It did — eight of them — and it is a second baseline rather
+  than a replacement because migrating a production Stalwart from 0.16 is a one-way data copy
+  that the operator must be free to schedule. [ADR-048](adr/048-stalwart-1-0-is-a-second-baseline.md).)
+  Other JMAP servers per FR-SRV-01/02 (best effort).
 
 ### 8.5 NFR-QUAL — Quality
 

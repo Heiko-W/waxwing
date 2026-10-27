@@ -74,6 +74,7 @@ Format: lightweight [MADR](https://adr.github.io/madr/), one page maximum.
 | [045](045-a-tab-walk-has-to-be-anchored.md) | A Tab walk has to be anchored, because `document.body.focus()` moves nothing | accepted |
 | [046](046-a-shared-account-syncs-what-it-serves-not-what-it-advertises.md) | A shared account syncs what it serves, not what it advertises | accepted |
 | [047](047-the-calendar-merges-accounts-the-rails-do-not.md) | The calendar merges accounts; the other rails do not | accepted |
+| [048](048-stalwart-1-0-is-a-second-baseline.md) | Stalwart 1.0 is a second baseline, and the seam translates | accepted |
 
 Regenerate this table after adding an ADR — it is written by hand, and a missing row is the
 kind of omission nobody notices.
