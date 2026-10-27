@@ -9,7 +9,7 @@
 import type { AuthProvider, JmapClient, Session } from '@waxwing/jmap'
 import { connect, JmapClient as JmapClientImpl } from '@waxwing/jmap'
 import { createContext, type ReactNode, useContext, useMemo } from 'react'
-import { AuthController, DEFAULT_CLIENT_ID, DEFAULT_SCOPES, wipeLocalData } from '../auth'
+import { AuthController, DEFAULT_SCOPES, wipeLocalData } from '../auth'
 
 /**
  * What the same-origin probe found: a JMAP server, no JMAP server, or no answer at all.
@@ -66,8 +66,7 @@ export const defaultServices: ShellServices = {
   connect,
   clientFromSession: (session, auth, sessionUrl) =>
     new JmapClientImpl({ session, auth, sessionUrl }),
-  makeAuthController: (issuer) =>
-    new AuthController({ oauth: { issuer, clientId: DEFAULT_CLIENT_ID, scopes: DEFAULT_SCOPES } }),
+  makeAuthController: (issuer) => new AuthController({ oauth: { issuer, scopes: DEFAULT_SCOPES } }),
   oauthIsAvailable: () =>
     typeof window !== 'undefined' &&
     window.isSecureContext &&

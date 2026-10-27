@@ -13,19 +13,24 @@ import { basic, bearer } from '@waxwing/jmap'
 import type { AuthorizationServer } from 'oauth4webapi'
 import { AuthConfigError, AuthError, AuthExpiredError, OAuthCallbackError } from './errors'
 import {
+  applicationClientId,
+  applicationRedirectUri,
   authorizationErrorCode,
   beginAuthorization,
   completeAuthorization,
   DEFAULT_CLIENT_ID,
   DEFAULT_SCOPES,
   discover,
+  isApplicationCallback,
   isPermanentRefreshError,
   type OAuthDeps,
   type PkceTransaction,
   type ResolvedOAuthConfig,
   refreshTokens,
   revokeToken,
+  supportsClientDocuments,
   type TokenResult,
+  withExtraScopes,
 } from './oauth'
 import { defaultLockManager, type LockManagerLike, withRefreshLock } from './refresh-lock'
 import { SecretName, SecretStore } from './secret-store'
@@ -170,8 +175,11 @@ export class AuthController {
   private async startOAuthLogin(
     request: Extract<LoginRequest, { method: 'oauth' }>,
   ): Promise<StartLoginResult> {
-    const config = this.requireResolvedOAuth()
-    const as = await this.ensureDiscovery(config)
+    const as = await this.ensureDiscovery(this.requireResolvedOAuth())
+    // AFTER discovery: which client the server wants is something only the server can say. The
+    // chosen config rides in the transaction, so the code exchange, the stored AuthRecord and every
+    // later refresh present the SAME client the authorization was granted to.
+    const config = this.clientFor(this.requireResolvedOAuth(), as)
     const { url, transaction } = await beginAuthorization(as, config)
     const stored: PkceTransaction = {
       ...transaction,
@@ -651,6 +659,32 @@ export class AuthController {
   }
 
   /**
+   * The client identity to present to THIS server.
+   *
+   * **Stalwart 1.0 refuses a client it has never heard of.** Where 0.16 took `client_id=waxwing`
+   * on faith, 1.0 answers "Unknown client id" before the sign-in form even appears — OAuth, the
+   * primary sign-in, stopped working on the day of the upgrade. What it accepts instead for an app
+   * it serves itself is the `oauth-client.json` shipped in the app's bundle: the id is that file's
+   * own URL, the server builds the document from the bundle and the host the request arrived on,
+   * and no configuration is needed under any mount prefix.
+   *
+   * The server announces the mechanism in discovery (`client_id_metadata_document_supported`), so
+   * this asks rather than guesses by version number. A deployment that registered a client of its
+   * own names it in the config and is never second-guessed.
+   */
+  private clientFor(config: ResolvedOAuthConfig, as: AuthorizationServer): ResolvedOAuthConfig {
+    if (this.oauthConfig?.clientId) return config
+    if (!supportsClientDocuments(as)) return config
+    const base = this.getBaseUri()
+    return {
+      ...config,
+      clientId: applicationClientId(base),
+      redirectUri: this.oauthConfig?.redirectUri ?? applicationRedirectUri(base),
+      scopes: withExtraScopes(config.scopes, as),
+    }
+  }
+
+  /**
    * Memoized RFC 8414 discovery, keyed by the issuer it was performed for.
    *
    * The issuer comparison is the load-bearing part: `as` feeds BOTH the RFC 9207 `iss` check in
@@ -675,7 +709,10 @@ export class AuthController {
     for (const key of ['code', 'state', 'iss', 'error', 'error_description']) {
       url.searchParams.delete(key)
     }
-    this.replaceUrl(url.href)
+    // Back to the app's front door when the authorization returned to the dedicated callback page:
+    // left there, the router would be asked to render `/oauth/callback` as if it were a screen.
+    const base = this.getBaseUri()
+    this.replaceUrl(isApplicationCallback(url.href, base) ? new URL(base).href : url.href)
   }
 
   private resolveWipeEnv(): WipeEnvironment {

@@ -15,7 +15,7 @@ import type { AuthProvider, Email, JmapClient, Mailbox } from '@waxwing/jmap'
 import { connect, JmapHttpError, JmapMethodError, JmapProblemError, Methods } from '@waxwing/jmap'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AuthController, DEFAULT_CLIENT_ID, DEFAULT_SCOPES } from '../auth'
+import { AuthController, DEFAULT_SCOPES } from '../auth'
 import { formatDate } from '../i18n/formatters'
 import { formatAddresses, isUnread, joinBody, senderLabel } from './body'
 import styles from './demo.module.css'
@@ -170,7 +170,7 @@ export function DemoApp() {
 
   function makeController(issuer: string): AuthController {
     return new AuthController({
-      oauth: { issuer, clientId: DEFAULT_CLIENT_ID, scopes: DEFAULT_SCOPES },
+      oauth: { issuer, scopes: DEFAULT_SCOPES },
     })
   }
 

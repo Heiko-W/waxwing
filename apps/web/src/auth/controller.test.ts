@@ -62,15 +62,35 @@ const DISCOVERY = {
   // Deliberately NO revocation_endpoint — mirrors Stalwart v0.16 (FR-AUTH-05 local-wipe path).
 }
 
+/**
+ * What Stalwart 1.0 says about itself, measured on v1.0.0: apps are identified by a client
+ * document, tokens can be revoked, and the scope list gained `files`.
+ */
+const DISCOVERY_V1 = {
+  ...DISCOVERY,
+  revocation_endpoint: 'http://localhost:18080/revoke',
+  end_session_endpoint: 'http://localhost:18080/logout',
+  client_id_metadata_document_supported: true,
+  scopes_supported: [
+    'openid',
+    'offline_access',
+    'urn:ietf:params:oauth:scope:mail',
+    'urn:ietf:params:oauth:scope:contacts',
+    'urn:ietf:params:oauth:scope:calendars',
+    'urn:ietf:params:oauth:scope:files',
+  ],
+}
+
 /** A fake Stalwart OIDC endpoint. Records requests so tests can assert on them. */
-function fakeIdp() {
+function fakeIdp(discovery: Record<string, unknown> = DISCOVERY) {
   const calls: { url: string; body: string }[] = []
   let refreshCount = 0
   const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = input instanceof URL ? input.href : typeof input === 'string' ? input : input.url
     const body = init?.body ? String(init.body) : ''
     calls.push({ url, body })
-    if (url.includes('/.well-known/')) return json(DISCOVERY)
+    if (url.includes('/.well-known/')) return json(discovery)
+    if (url.endsWith('/revoke')) return new Response(null, { status: 200 })
     if (url.includes('/token')) {
       if (body.includes('grant_type=refresh_token')) {
         refreshCount += 1
@@ -319,6 +339,101 @@ describe('AuthController — OAuth Authorization Code + PKCE', () => {
       getBaseUri: () => 'http://localhost:5173/mail/',
     })
     expect(await rebooted.restore()).toBeNull()
+  })
+})
+
+describe('AuthController — the client a server will accept (Stalwart 1.0)', () => {
+  const BASE = 'http://localhost:5173/mail/'
+
+  function setup(
+    discovery: Record<string, unknown>,
+    oauth: { clientId?: string; redirectUri?: string } = {},
+  ) {
+    const idp = fakeIdp(discovery)
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store } = freshStore()
+    let currentHref = BASE
+    let navigated: string | null = null
+    const controller = new AuthController({
+      oauth: { issuer: 'http://localhost:18080', scopes: DEFAULT_SCOPES, ...oauth },
+      store,
+      navigate: (url) => {
+        navigated = url
+      },
+      getHref: () => currentHref,
+      getBaseUri: () => BASE,
+      replaceUrl: (url) => {
+        currentHref = url
+      },
+    })
+    return {
+      idp,
+      store,
+      controller,
+      authUrl: () => new URL(navigated as unknown as string),
+      returnTo: (href: string) => {
+        currentHref = href
+      },
+      href: () => currentHref,
+    }
+  }
+
+  it('names the app by its own client document when the server asks for one', async () => {
+    const t = setup(DISCOVERY_V1)
+    await t.controller.startLogin({ method: 'oauth' })
+    const url = t.authUrl()
+    // The id is the URL of the file the bundle ships, under whatever prefix the app is mounted at.
+    expect(url.searchParams.get('client_id')).toBe('http://localhost:5173/mail/oauth-client.json')
+    // …and the redirect is the dedicated page the document lists, not the base: an empty relative
+    // redirect URI is invalid in that document.
+    expect(url.searchParams.get('redirect_uri')).toBe('http://localhost:5173/mail/oauth/callback')
+    // The consent screen names what the app uses, limited to what the server offers.
+    expect(url.searchParams.get('scope')?.split(' ')).toEqual([
+      ...DEFAULT_SCOPES,
+      'urn:ietf:params:oauth:scope:contacts',
+      'urn:ietf:params:oauth:scope:calendars',
+      'urn:ietf:params:oauth:scope:files',
+    ])
+  })
+
+  it('still sends `waxwing` and the base URL to a server that has no client documents (0.16)', async () => {
+    const t = setup(DISCOVERY)
+    await t.controller.startLogin({ method: 'oauth' })
+    expect(t.authUrl().searchParams.get('client_id')).toBe('waxwing')
+    expect(t.authUrl().searchParams.get('redirect_uri')).toBe(BASE)
+    expect(t.authUrl().searchParams.get('scope')).toBe(DEFAULT_SCOPES.join(' '))
+  })
+
+  it('never second-guesses a client the deployment named', async () => {
+    const t = setup(DISCOVERY_V1, { clientId: 'registered-client' })
+    await t.controller.startLogin({ method: 'oauth' })
+    expect(t.authUrl().searchParams.get('client_id')).toBe('registered-client')
+    expect(t.authUrl().searchParams.get('redirect_uri')).toBe(BASE)
+  })
+
+  it('exchanges the code as that client, lands back on the base URL, and revokes on sign-out', async () => {
+    const t = setup(DISCOVERY_V1)
+    await t.controller.startLogin({ method: 'oauth' })
+    const state = t.authUrl().searchParams.get('state')
+    t.returnTo(`${BASE}oauth/callback?code=c1&state=${state}`)
+    expect(await t.controller.isRedirectCallback()).toBe(true)
+    await t.controller.completeRedirect()
+    // The router must not be handed `/oauth/callback` as if it were a screen.
+    expect(t.href()).toBe(BASE)
+
+    const exchange = t.idp.calls.find((c) => c.url.includes('/token'))
+    const form = new URLSearchParams(exchange?.body)
+    expect(form.get('client_id')).toBe('http://localhost:5173/mail/oauth-client.json')
+    expect(form.get('redirect_uri')).toBe('http://localhost:5173/mail/oauth/callback')
+
+    // ADR-006's forward-compatibility hook, now live: 1.0 advertises a revocation endpoint, so
+    // signing out kills the token on the server instead of only forgetting it here.
+    await t.controller.logout()
+    const revoke = t.idp.calls.find((c) => c.url.endsWith('/revoke'))
+    expect(revoke).toBeDefined()
+    const revokeForm = new URLSearchParams(revoke?.body)
+    expect(revokeForm.get('token')).toBe('refresh-1')
+    expect(revokeForm.get('client_id')).toBe('http://localhost:5173/mail/oauth-client.json')
   })
 })
 
