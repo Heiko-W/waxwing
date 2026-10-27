@@ -1837,6 +1837,7 @@
     "searchPlaceholder": "Nom ou adresse",
     "noMatches": "Personne ne correspond.",
     "searchFailed": "La recherche de personnes a échoué.",
+    "directoryOff": "La recherche de personnes est désactivée sur ce serveur. Demandez à son administrateur d’autoriser les requêtes d’annuaire.",
     "roleLabel": "Peut",
     "roleFor": "Ce que {{name}} peut faire",
     "grant": "Ajouter",

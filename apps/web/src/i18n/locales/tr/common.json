@@ -1804,6 +1804,7 @@
     "searchPlaceholder": "Ad veya adres",
     "noMatches": "Buna uyan kimse yok.",
     "searchFailed": "Kişi araması başarısız oldu.",
+    "directoryOff": "Bu sunucuda kişi araması kapalı. Sunucuyu yönetenden dizin sorgularına izin vermesini isteyin.",
     "roleLabel": "Yapabilecekleri",
     "roleFor": "{{name}} neler yapabilir",
     "grant": "Ekle",

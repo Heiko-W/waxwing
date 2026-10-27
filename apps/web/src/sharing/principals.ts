@@ -7,7 +7,13 @@
  */
 
 import type { Id, JmapClient, Principal } from '@waxwing/jmap'
-import { Capabilities, Methods, principalSearchFilter } from '@waxwing/jmap'
+import {
+  Capabilities,
+  JmapMethodError,
+  MethodErrorTypes,
+  Methods,
+  principalSearchFilter,
+} from '@waxwing/jmap'
 import type { JmapSession } from '../app/session/types'
 
 /** A result list nobody scrolls to the end of is not a better answer. */
@@ -26,6 +32,20 @@ export function principalLabel(principal: Principal): string {
   const email = principal.email?.trim()
   if (email !== undefined && email !== '') return email
   return principal.id
+}
+
+/**
+ * Did the server refuse the lookup itself, rather than fail at it?
+ *
+ * **Stalwart 1.0 ships with directory queries OFF** (`Sharing.allowDirectoryQueries`). `Principal/query`
+ * then answers `forbidden` — "The administrator has disabled directory queries." — where 0.16 let any
+ * user list every other. That is not an outage and retrying will not help: someone with access to the
+ * server's settings has to switch it on. A share dialog that says "the people search failed" sends a
+ * user to try again, and an administrator never hears about it; this is what lets the dialog say which
+ * of the two it is.
+ */
+export function directoryIsOff(error: unknown): boolean {
+  return error instanceof JmapMethodError && error.type === MethodErrorTypes.forbidden
 }
 
 /**

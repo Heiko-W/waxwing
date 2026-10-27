@@ -1778,6 +1778,7 @@
     "searchPlaceholder": "名前またはアドレス",
     "noMatches": "一致する人はいません。",
     "searchFailed": "人の検索に失敗しました。",
+    "directoryOff": "このサーバーでは人の検索が無効になっています。管理者にディレクトリ検索を許可するよう依頼してください。",
     "roleLabel": "許可する操作",
     "roleFor": "{{name}} に許可する操作",
     "grant": "追加",

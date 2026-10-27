@@ -1804,6 +1804,7 @@
     "searchPlaceholder": "Name oder Adresse",
     "noMatches": "Dazu passt niemand.",
     "searchFailed": "Die Personensuche ist fehlgeschlagen.",
+    "directoryOff": "Die Personensuche ist auf diesem Server abgeschaltet. Bitten Sie die Betreiber, Verzeichnisabfragen zu erlauben.",
     "roleLabel": "Darf",
     "roleFor": "Was {{name}} darf",
     "grant": "Hinzufügen",

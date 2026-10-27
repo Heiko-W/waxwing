@@ -1804,6 +1804,7 @@
     "searchPlaceholder": "Name or address",
     "noMatches": "Nobody matches that.",
     "searchFailed": "The people search failed.",
+    "directoryOff": "People search is switched off on this server. Ask whoever runs it to allow directory queries.",
     "roleLabel": "They may",
     "roleFor": "What {{name}} may do",
     "grant": "Add",

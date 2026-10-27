@@ -1856,6 +1856,7 @@
     "searchPlaceholder": "Jméno nebo adresa",
     "noMatches": "Tomu neodpovídá nikdo.",
     "searchFailed": "Hledání osob se nezdařilo.",
+    "directoryOff": "Vyhledávání osob je na tomto serveru vypnuté. Požádejte provozovatele, aby povolil dotazy na adresář.",
     "roleLabel": "Smí",
     "roleFor": "Co smí {{name}}",
     "grant": "Přidat",
