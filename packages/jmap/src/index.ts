@@ -61,6 +61,17 @@ export {
   ProblemTypes,
   parseRetryAfter,
 } from './errors'
+// Runtime value(s) from the types modules (the type-only re-export above strips values).
+export type { FileNodeWire } from './filenode-wire'
+export {
+  FULL_FILE_RIGHTS,
+  fileNodeWire,
+  NO_FILE_RIGHTS,
+  newDirectory,
+  newFile,
+  normalizeFileNode,
+  normalizeFileNodes,
+} from './filenode-wire'
 // Typed method registry (RFC 8620/8621 methods bound to their arg/response types).
 export type { MethodName } from './methods'
 export { Methods } from './methods'
@@ -89,7 +100,6 @@ export {
 // Transport (injectable fetch).
 export type { FetchLike, Transport } from './transport'
 export { getWithAuth, postApi, resolveFetch } from './transport'
-// Runtime value(s) from the types modules (the type-only re-export above strips values).
 export { fileNodeNameProblem } from './types/filenode'
 // Wire types (RFC 8620 core + RFC 8621 mail).
 export type * from './types/index'
