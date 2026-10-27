@@ -598,6 +598,27 @@
         "mismatch": "The two new passwords are not the same.",
         "devices": "Afterwards you sign in again here, and enter the new password in the mail apps on your other devices. App passwords keep working."
       },
+      "connectedApps": {
+        "label": "Signed-in apps",
+        "hint": "Apps that signed in to your account through the server’s own sign-in page. Signing one out ends its access at once; your password and your app passwords stay as they are.",
+        "empty": "No app is signed in this way.",
+        "fullAccess": "Full access to your account",
+        "signInOnly": "Sign-in only, no access to your data",
+        "access": "Access to {{list}}",
+        "scopeMail": "mail",
+        "scopeContacts": "contacts",
+        "scopeCalendars": "calendars",
+        "scopeFiles": "files",
+        "lastUsed": "Last used {{date}}",
+        "since": "Signed in {{date}}",
+        "from": "From {{address}}",
+        "signOut": "Sign out {{name}}",
+        "signOutTitle": "Sign this app out?",
+        "signOutBody": "{{name}} loses access to your account and has to sign in again. If this is the app you are using right now, that includes this one.",
+        "signOutCancel": "Cancel",
+        "signOutConfirm": "Sign out",
+        "signedOut": "{{name}} was signed out."
+      },
       "appPasswords": {
         "label": "App passwords",
         "hint": "A separate password for each mail app on your devices. Revoking one leaves your account password and every other app untouched.",

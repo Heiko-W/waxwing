@@ -592,6 +592,27 @@
         "mismatch": "两次输入的新密码不一致。",
         "devices": "更改后需要在这里重新登录，并在其他设备的邮件应用中填入新密码。应用专用密码仍然有效。"
       },
+      "connectedApps": {
+        "label": "已登录的应用",
+        "hint": "通过服务器自带登录页登录您账户的应用。让某个应用退出登录会立即终止它的访问；您的密码和应用专用密码不受影响。",
+        "empty": "没有应用以这种方式登录。",
+        "fullAccess": "对您账户的完全访问",
+        "signInOnly": "仅登录，无法访问您的数据",
+        "access": "可访问：{{list}}",
+        "scopeMail": "邮件",
+        "scopeContacts": "联系人",
+        "scopeCalendars": "日历",
+        "scopeFiles": "文件",
+        "lastUsed": "最后使用：{{date}}",
+        "since": "登录时间：{{date}}",
+        "from": "来自 {{address}}",
+        "signOut": "让 {{name}} 退出登录",
+        "signOutTitle": "让此应用退出登录？",
+        "signOutBody": "{{name}} 将失去对您账户的访问，需要重新登录。如果这就是您正在使用的应用，也包括它。",
+        "signOutCancel": "取消",
+        "signOutConfirm": "退出登录",
+        "signedOut": "{{name}} 已退出登录。"
+      },
       "appPasswords": {
         "label": "应用专用密码",
         "hint": "为您设备上的每个邮件应用单设一个密码。吊销其中一个，不会影响账户密码和其他任何应用。",

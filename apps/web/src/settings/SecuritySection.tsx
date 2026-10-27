@@ -43,6 +43,8 @@ import {
 } from './stalwart-client'
 import {
   type AppPasswordView,
+  type AppScope,
+  type ConnectedAppView,
   languageLabel,
   languageOptions,
   type SpamSampleView,
@@ -98,6 +100,29 @@ function day(iso: string | null): string | null {
   return Number.isFinite(at) ? formatDate(at) : null
 }
 
+/** "Mail, Contacts and Calendars", in the reader's language and with its own conjunction. */
+function joinNames(language: string, names: readonly string[]): string {
+  try {
+    return new Intl.ListFormat(language, { style: 'long', type: 'conjunction' }).format(names)
+  } catch {
+    return names.join(', ')
+  }
+}
+
+/** The word for one scope. Spelled out, not computed: `guards.test.ts` only sees LITERAL keys. */
+function scopeName(t: TFunction, scope: AppScope): string {
+  switch (scope) {
+    case 'mail':
+      return t('settings.security.connectedApps.scopeMail')
+    case 'contacts':
+      return t('settings.security.connectedApps.scopeContacts')
+    case 'calendars':
+      return t('settings.security.connectedApps.scopeCalendars')
+    case 'files':
+      return t('settings.security.connectedApps.scopeFiles')
+  }
+}
+
 export function SecuritySection(props: SecuritySectionProps) {
   const { t, i18n } = useTranslation()
   const { toast } = useToast()
@@ -115,6 +140,7 @@ export function SecuritySection(props: SecuritySectionProps) {
   const [creating, setCreating] = useState(false)
   const [changing, setChanging] = useState(false)
   const [revoking, setRevoking] = useState<AppPasswordView | null>(null)
+  const [signingOut, setSigningOut] = useState<ConnectedAppView | null>(null)
   const [busy, setBusy] = useState(false)
 
   const injected = props.client
@@ -183,6 +209,25 @@ export function SecuritySection(props: SecuritySectionProps) {
     }
   }
 
+  async function signOutApp(app: ConnectedAppView): Promise<void> {
+    if (client === null) return
+    setBusy(true)
+    setFailure(null)
+    try {
+      await client.revokeConnectedApp(app.id)
+      setSigningOut(null)
+      toast({ title: t('settings.security.connectedApps.signedOut', { name: app.name }) })
+      // The list is re-read, but a failure HERE is not a failed sign-out. When the app that was
+      // signed out is this one, the token that would read the list is the token just revoked, and
+      // reporting "could not be loaded" under a toast that says it worked would be both.
+      await load().catch(() => {})
+    } catch (thrown) {
+      await after(thrown)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function chooseLanguage(locale: string): Promise<void> {
     if (client === null) return
     setBusy(true)
@@ -243,11 +288,13 @@ export function SecuritySection(props: SecuritySectionProps) {
 
   const appPasswords = snapshot?.appPasswords ?? null
   const spamSamples = snapshot?.spamSamples ?? null
+  const connectedApps = snapshot?.connectedApps ?? null
   const encryption = snapshot?.encryption ?? null
   const language = snapshot?.language ?? null
   const nothingOffered =
     snapshot !== null &&
     appPasswords === null &&
+    connectedApps === null &&
     spamSamples === null &&
     encryption === null &&
     !snapshot.passwordReadable
@@ -401,6 +448,66 @@ export function SecuritySection(props: SecuritySectionProps) {
         </div>
       )}
 
+      {connectedApps !== null && (
+        <fieldset className={styles.groupBox}>
+          <legend className={styles.label}>{t('settings.security.connectedApps.label')}</legend>
+          <p className={styles.hint}>{t('settings.security.connectedApps.hint')}</p>
+          {connectedApps.length === 0 ? (
+            <p className={styles.hint}>{t('settings.security.connectedApps.empty')}</p>
+          ) : (
+            <ul className={styles.identityList}>
+              {connectedApps.map((app) => {
+                const used = day(app.lastUsedAt)
+                const since = day(app.createdAt)
+                return (
+                  <li key={app.id} className={styles.identityRow}>
+                    <div className={styles.identityText}>
+                      <span className={styles.identityName}>{app.name}</span>
+                      <span className={styles.hint}>
+                        {app.fullAccess
+                          ? t('settings.security.connectedApps.fullAccess')
+                          : app.scopes.length === 0
+                            ? t('settings.security.connectedApps.signInOnly')
+                            : t('settings.security.connectedApps.access', {
+                                list: joinNames(
+                                  uiLanguage,
+                                  app.scopes.map((scope) => scopeName(t, scope)),
+                                ),
+                              })}
+                      </span>
+                      {used !== null && (
+                        <span className={styles.hint}>
+                          {t('settings.security.connectedApps.lastUsed', { date: used })}
+                        </span>
+                      )}
+                      {since !== null && (
+                        <span className={styles.hint}>
+                          {t('settings.security.connectedApps.since', { date: since })}
+                        </span>
+                      )}
+                      {app.remoteIp !== null && (
+                        <span className={styles.hint}>
+                          {t('settings.security.connectedApps.from', { address: app.remoteIp })}
+                        </span>
+                      )}
+                    </div>
+                    <div className={styles.rowActions}>
+                      <Button
+                        variant="ghost"
+                        disabled={busy || offline}
+                        onClick={() => setSigningOut(app)}
+                      >
+                        {t('settings.security.connectedApps.signOut', { name: app.name })}
+                      </Button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </fieldset>
+      )}
+
       {spamSamples !== null && (
         <fieldset className={styles.groupBox}>
           <legend className={styles.label}>{t('settings.security.spam.label')}</legend>
@@ -517,6 +624,31 @@ export function SecuritySection(props: SecuritySectionProps) {
         <p>
           {t('settings.security.appPasswords.revokeBody', { name: revoking?.description ?? '' })}
         </p>
+      </Dialog>
+
+      <Dialog
+        open={signingOut !== null}
+        onClose={() => setSigningOut(null)}
+        title={t('settings.security.connectedApps.signOutTitle')}
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setSigningOut(null)}>
+              {t('settings.security.connectedApps.signOutCancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={busy}
+              onClick={() => {
+                if (signingOut !== null) void signOutApp(signingOut)
+              }}
+            >
+              {t('settings.security.connectedApps.signOutConfirm')}
+            </Button>
+          </>
+        }
+      >
+        <p>{t('settings.security.connectedApps.signOutBody', { name: signingOut?.name ?? '' })}</p>
       </Dialog>
     </>
   )

@@ -36,6 +36,11 @@ Ship **Settings → Account & security**: app passwords (create/list/revoke), th
 the language the server writes its own messages in, a read-only report of encryption at rest, and
 the account's spam training samples (list/delete). Behind these choices:
 
+*(Added 2026-10-27, Stalwart 1.0: the same section lists the apps signed in over OAuth —
+`x:OAuthGrant`, FR-ACC-05 — and can sign any of them out. It rides on the same gate, plus one
+more: the object is absent on 0.16 and `unknownMethod` hides the block. Nothing else in this ADR
+changes.)*
+
 1. **The capability check reads the ACCOUNT level, not the session level.** Measured: `GET
    /jmap/session` on v0.16.18 advertises 17 top-level URNs and `urn:stalwart:jmap` is not among
    them; it appears in `accounts[id].accountCapabilities` (as `{}`) and in `primaryAccounts`. A

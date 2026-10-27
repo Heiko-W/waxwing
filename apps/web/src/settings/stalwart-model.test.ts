@@ -14,7 +14,9 @@ import {
   languageOptions,
   localeStyleOf,
   SERVER_LANGUAGES,
+  sortConnectedApps,
   toAppPassword,
+  toConnectedApp,
   toEncryption,
   toPosixLocale,
   toPublicKey,
@@ -264,5 +266,76 @@ describe('expiryFromDays', () => {
     // `2026-09-20T12:00:00Z` — no milliseconds: Stalwart's `UTCDateTime` is second-precision, and
     // the `.000` a bare `toISOString()` appends is what a round trip would silently drop.
     expect(expiryFromDays(30, NOW)).toBe('2026-09-20T12:00:00Z')
+  })
+})
+
+describe('toConnectedApp', () => {
+  const grant = {
+    id: 'g1',
+    pending: false,
+    clientId: 'https://mail.example.test/webmail/oauth-client.json',
+    clientName: 'Waxwing',
+    clientKind: 'firstParty',
+    scopes: { files: true, mail: true },
+    remoteIp: '203.0.113.7',
+    createdAt: '2026-10-01T08:00:00Z',
+    lastUsedAt: '2026-10-27T16:00:00Z',
+  }
+
+  it('names the app, marks a first-party one as full access, and orders the scopes by the enum', () => {
+    expect(toConnectedApp(grant)).toEqual({
+      id: 'g1',
+      name: 'Waxwing',
+      fullAccess: true,
+      scopes: ['mail', 'files'],
+      createdAt: '2026-10-01T08:00:00Z',
+      lastUsedAt: '2026-10-27T16:00:00Z',
+      remoteIp: '203.0.113.7',
+    })
+  })
+
+  it('does not call a registered client full access', () => {
+    expect(toConnectedApp({ ...grant, clientKind: 'registered' })?.fullAccess).toBe(false)
+  })
+
+  it('is no row for a grant still at the consent screen', () => {
+    expect(toConnectedApp({ ...grant, pending: true })).toBeNull()
+  })
+
+  it('falls back to where the client lives, then to its id — never to an empty name', () => {
+    const unnamed = { ...grant, clientName: '  ' }
+    expect(toConnectedApp(unnamed)?.name).toBe('mail.example.test')
+    expect(toConnectedApp({ ...unnamed, clientId: 'swc1.opaque' })?.name).toBe('swc1.opaque')
+    const { clientId: _clientId, ...noClient } = unnamed
+    expect(toConnectedApp(noClient)?.name).toBe('g1')
+  })
+
+  it('shows no scope it has no word for, and tolerates a missing set', () => {
+    expect(toConnectedApp({ ...grant, scopes: { mail: true, hologram: true } })?.scopes).toEqual([
+      'mail',
+    ])
+    expect(toConnectedApp({ ...grant, scopes: null })?.scopes).toEqual([])
+    const { scopes: _scopes, ...noScopes } = grant
+    expect(toConnectedApp(noScopes)?.scopes).toEqual([])
+  })
+
+  it('does not turn a date it cannot read into text', () => {
+    const { lastUsedAt: _lastUsedAt, ...neverUsed } = grant
+    expect(toConnectedApp(neverUsed)?.lastUsedAt).toBeNull()
+  })
+})
+
+describe('sortConnectedApps', () => {
+  const app = (id: string, name: string, lastUsedAt: string | null) =>
+    ({ id, name, lastUsedAt }) as unknown as Parameters<typeof sortConnectedApps>[0][number]
+
+  it('puts the most recently used first, and an app with no usable date last', () => {
+    const sorted = sortConnectedApps([
+      app('a', 'Old', '2026-01-01T00:00:00Z'),
+      app('b', 'Never', null),
+      app('c', 'New', '2026-10-01T00:00:00Z'),
+      app('d', 'Garbled', 'not a date'),
+    ])
+    expect(sorted.map((one) => one.id)).toEqual(['c', 'a', 'd', 'b'])
   })
 })

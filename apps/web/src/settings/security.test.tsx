@@ -38,7 +38,7 @@ import {
   STALWART_CAPABILITY,
   StalwartSetError,
 } from './stalwart-client'
-import type { AppPasswordView, SpamSampleView } from './stalwart-model'
+import type { AppPasswordView, ConnectedAppView, SpamSampleView } from './stalwart-model'
 
 const ACC = 'b'
 const SECTION = 'Account & security'
@@ -61,6 +61,16 @@ const SAMPLE: SpamSampleView = {
   isSpam: true,
 }
 
+const APP: ConnectedAppView = {
+  id: 'g1',
+  name: 'Thunderbird',
+  fullAccess: false,
+  scopes: ['mail', 'contacts'],
+  createdAt: '2026-10-01T08:00:00Z',
+  lastUsedAt: '2026-10-27T16:00:00Z',
+  remoteIp: '203.0.113.7',
+}
+
 const FULL: SelfServiceSnapshot = {
   appPasswords: [PHONE],
   passwordReadable: true,
@@ -68,6 +78,7 @@ const FULL: SelfServiceSnapshot = {
   encryption: { kind: 'off' },
   publicKeys: [],
   spamSamples: [SAMPLE],
+  connectedApps: [APP],
 }
 
 interface Calls {
@@ -77,6 +88,7 @@ interface Calls {
   readonly passwords: [string, string][]
   readonly languages: string[]
   readonly samples: string[]
+  readonly signedOut: string[]
 }
 
 interface Fake {
@@ -99,6 +111,7 @@ function fakeClient(
     passwords: [],
     languages: [],
     samples: [],
+    signedOut: [],
   }
 
   const client: SelfServiceClient = {
@@ -135,6 +148,14 @@ function fakeClient(
       calls.languages.push(locale)
       options.onWrite?.()
       current = { ...current, language: locale }
+    },
+    revokeConnectedApp: async (id) => {
+      calls.signedOut.push(id)
+      options.onWrite?.()
+      current = {
+        ...current,
+        connectedApps: (current.connectedApps ?? []).filter((one) => one.id !== id),
+      }
     },
     destroySpamSample: async (id) => {
       calls.samples.push(id)
@@ -436,6 +457,7 @@ describe('<SecuritySection>', () => {
         encryption: null,
         publicKeys: [],
         spamSamples: null,
+        connectedApps: null,
       },
     })
     renderSection(client)
@@ -443,6 +465,106 @@ describe('<SecuritySection>', () => {
     expect(
       await screen.findByText('Your server offers none of these settings for this account.'),
     ).toBeInTheDocument()
+  })
+})
+
+describe('signed-in apps (Stalwart 1.0 connected applications)', () => {
+  it('lists each app with what it may reach and when it was last used', async () => {
+    const { client } = fakeClient()
+    renderSection(client)
+
+    expect(await screen.findByText('Signed-in apps')).toBeInTheDocument()
+    expect(screen.getByText('Thunderbird')).toBeInTheDocument()
+    expect(screen.getByText('Access to mail and contacts')).toBeInTheDocument()
+    expect(screen.getByText(/^Last used /)).toBeInTheDocument()
+    expect(screen.getByText('From 203.0.113.7')).toBeInTheDocument()
+  })
+
+  it('says "full access" for a trusted app instead of listing four scopes', async () => {
+    const { client } = fakeClient({
+      snapshot: { ...FULL, connectedApps: [{ ...APP, fullAccess: true }] },
+    })
+    renderSection(client)
+
+    expect(await screen.findByText('Full access to your account')).toBeInTheDocument()
+    expect(screen.queryByText(/^Access to /)).not.toBeInTheDocument()
+  })
+
+  it('says so when no app is signed in, rather than showing nothing', async () => {
+    const { client } = fakeClient({ snapshot: { ...FULL, connectedApps: [] } })
+    renderSection(client)
+
+    expect(await screen.findByText('No app is signed in this way.')).toBeInTheDocument()
+  })
+
+  it('is NOT on the page where the server cannot say (Stalwart 0.16) — absent, not empty', async () => {
+    // "No apps" and "this server has no such list" are different statements; showing the first on a
+    // server that can only mean the second would tell people nothing is signed in to their account.
+    const { client } = fakeClient({ snapshot: { ...FULL, connectedApps: null } })
+    renderSection(client)
+
+    await screen.findByText('iPhone Mail')
+    expect(screen.queryByText('Signed-in apps')).not.toBeInTheDocument()
+    expect(screen.queryByText('No app is signed in this way.')).not.toBeInTheDocument()
+  })
+
+  it('signs an app out only after the reader confirms it', async () => {
+    const user = userEvent.setup()
+    const { client, calls } = fakeClient()
+    renderSection(client)
+
+    await user.click(await screen.findByRole('button', { name: 'Sign out Thunderbird' }))
+    // Nothing happens on the first click: it asks.
+    expect(calls.signedOut).toEqual([])
+    const dialog = await screen.findByRole('dialog', { name: 'Sign this app out?' })
+    expect(within(dialog).getByText(/Thunderbird loses access to your account/)).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Sign out' }))
+
+    await waitFor(() => expect(calls.signedOut).toEqual(['g1']))
+    // …and the list is re-read, so the row is gone.
+    await waitFor(() => expect(screen.queryByText('Thunderbird')).not.toBeInTheDocument())
+  })
+
+  it('keeps the app and says why when the server refuses', async () => {
+    const user = userEvent.setup()
+    const { client } = fakeClient({
+      onWrite: () => {
+        throw new StalwartSetError('forbidden', 'You may not do that.')
+      },
+    })
+    renderSection(client)
+
+    await user.click(await screen.findByRole('button', { name: 'Sign out Thunderbird' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Sign this app out?' })
+    await user.click(within(dialog).getByRole('button', { name: 'Sign out' }))
+
+    expect(await screen.findByText(/You may not do that\./)).toBeInTheDocument()
+    expect(screen.getByText('Thunderbird')).toBeInTheDocument()
+  })
+
+  it('does not report a failed sign-out when only the re-read fails — this app may have signed itself out', async () => {
+    // Signing out the app in use revokes the token that would read the list. The toast said it
+    // worked; "could not be loaded" under it would contradict the toast.
+    const user = userEvent.setup()
+    const { client } = fakeClient()
+    let loads = 0
+    const flaky: SelfServiceClient = {
+      ...client,
+      load: async (signal) => {
+        loads += 1
+        if (loads > 1) throw new Error('401')
+        return await client.load(signal)
+      },
+    }
+    renderSection(flaky)
+
+    await user.click(await screen.findByRole('button', { name: 'Sign out Thunderbird' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Sign this app out?' })
+    await user.click(within(dialog).getByRole('button', { name: 'Sign out' }))
+
+    expect(await screen.findByText('Thunderbird was signed out.')).toBeInTheDocument()
+    expect(screen.queryByText(/could not be loaded/i)).not.toBeInTheDocument()
   })
 })
 

@@ -563,6 +563,15 @@ Settings that traditionally require webmail-server plugins come free with Stalwa
   training samples the server is keeping of the reader's messages, deletable one at a time
   (the server creates them — an account may not).
 
+- **FR-ACC-05 (V1.x, Should — shipped, Stalwart 1.0 and later)** — **Signed-in apps**
+  (`x:OAuthGrant/{get,set}`, Stalwart's "connected applications"): every app that signed in to the
+  account through the server's own OAuth page, with what it may reach (or "full access" for a
+  trusted one), when it was last used and from where, each revocable. Revoking signs the app out;
+  when that is the app in use, the next request asks for a sign-in. Rows still at the consent
+  screen are not listed. The object does not exist on Stalwart 0.16, which answers
+  `unknownMethod` — and there the block is **absent**, not an empty list, because "no apps" and
+  "this server cannot say" are different statements.
+
 - **FR-ACC-04 (Must, for all of FR-ACC-\*)** — All of the above sit behind `urn:stalwart:jmap`,
   a **proprietary** extension, and are therefore a progressive enhancement in the sense of
   product principle 6 and FR-SRV-02: on a server that does not advertise it the section does not

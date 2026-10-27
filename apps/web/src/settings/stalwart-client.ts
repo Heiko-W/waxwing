@@ -42,13 +42,16 @@ import { hasCapability, JmapMethodError } from '@waxwing/jmap'
 import type { JmapSession } from '../app/session/types'
 import {
   type AppPasswordView,
+  type ConnectedAppView,
   type EncryptionView,
   type LocaleStyle,
   localeStyleOf,
   type PublicKeyView,
   REGISTRY_SINGLETON,
   type SpamSampleView,
+  sortConnectedApps,
   toAppPassword,
+  toConnectedApp,
   toEncryption,
   toPosixLocale,
   toPublicKey,
@@ -56,6 +59,7 @@ import {
   toWireLocale,
   type WireAccountSettings,
   type WireAppPassword,
+  type WireOAuthGrant,
   type WirePublicKey,
   type WireSpamSample,
 } from './stalwart-model'
@@ -118,6 +122,13 @@ export interface SelfServiceSnapshot {
   readonly encryption: EncryptionView | null
   readonly publicKeys: readonly PublicKeyView[]
   readonly spamSamples: readonly SpamSampleView[] | null
+  /**
+   * The apps signed in to this account over OAuth — Stalwart 1.0's connected applications. `null`
+   * on 0.16, which has no such object (`unknownMethod`), exactly like a permission the account
+   * lacks: the block is hidden, not shown empty, because "no apps" and "this server cannot say" are
+   * different statements.
+   */
+  readonly connectedApps: readonly ConnectedAppView[] | null
 }
 
 export interface SelfServiceClient {
@@ -138,6 +149,8 @@ export interface SelfServiceClient {
   /** `locale` is a POSIX name (`de_DE`); the client writes it in the spelling the server accepts. */
   setLanguage(locale: string): Promise<void>
   destroySpamSample(id: Id): Promise<void>
+  /** Signs the app out: its tokens stop working. Waxwing's own session is one of the grants. */
+  revokeConnectedApp(id: Id): Promise<void>
 }
 
 /** A SetError as servers really send it — looser than the package's, whose `description` is required. */
@@ -187,7 +200,14 @@ export function makeSelfServiceClient(client: JmapClient, accountId: Id): SelfSe
     try {
       return read()
     } catch (thrown) {
-      if (thrown instanceof JmapMethodError && thrown.type === 'forbidden') return null
+      // `unknownMethod` is the same statement from the other side: this server has no such object
+      // (`x:OAuthGrant` does not exist before Stalwart 1.0). Local to the call, like `forbidden`.
+      if (
+        thrown instanceof JmapMethodError &&
+        (thrown.type === 'forbidden' || thrown.type === 'unknownMethod')
+      ) {
+        return null
+      }
       throw thrown
     }
   }
@@ -208,7 +228,7 @@ export function makeSelfServiceClient(client: JmapClient, accountId: Id): SelfSe
   let localeStyle: LocaleStyle | null = null
 
   async function load(signal?: AbortSignal): Promise<SelfServiceSnapshot> {
-    // ONE round trip for five reads. `x:*/get` with no `ids` means "all of them"; app passwords
+    // ONE round trip for six reads. `x:*/get` with no `ids` means "all of them"; app passwords
     // additionally report the account's OWN credential id under `notFound`, which is why nothing
     // here reads `notFound`.
     const responses = await client.call(
@@ -218,6 +238,7 @@ export function makeSelfServiceClient(client: JmapClient, accountId: Id): SelfSe
         ['x:AccountSettings/get', { accountId, ids: [REGISTRY_SINGLETON] }, 's'],
         ['x:PublicKey/get', { accountId }, 'k'],
         ['x:SpamTrainingSample/get', { accountId }, 't'],
+        ['x:OAuthGrant/get', { accountId }, 'g'],
       ],
       { using: [STALWART_CAPABILITY], ...(signal ? { signal } : {}) },
     )
@@ -228,6 +249,7 @@ export function makeSelfServiceClient(client: JmapClient, accountId: Id): SelfSe
     const settings = optional(() => responses.get<GetEcho<WireAccountSettings>>('s'))
     const keys = optional(() => responses.get<GetEcho<WirePublicKey>>('k'))
     const samples = optional(() => responses.get<GetEcho<WireSpamSample>>('t'))
+    const grants = optional(() => responses.get<GetEcho<WireOAuthGrant>>('g'))
 
     const publicKeys = (keys?.list ?? []).map(toPublicKey)
     const singleton = settings?.list[0]
@@ -242,6 +264,15 @@ export function makeSelfServiceClient(client: JmapClient, accountId: Id): SelfSe
       encryption: settings === null ? null : toEncryption(singleton?.encryptionAtRest, publicKeys),
       publicKeys,
       spamSamples: samples === null ? null : samples.list.map(toSpamSample),
+      connectedApps:
+        grants === null
+          ? null
+          : sortConnectedApps(
+              grants.list.flatMap((one) => {
+                const app = toConnectedApp(one)
+                return app === null ? [] : [app]
+              }),
+            ),
     }
   }
 
@@ -322,6 +353,12 @@ export function makeSelfServiceClient(client: JmapClient, accountId: Id): SelfSe
       // The FIRST refusal is the one worth showing: it names the spelling the server was believed
       // to want, and the second one only repeats the same enum complaint in the other dialect.
       throw refusal
+    },
+
+    async revokeConnectedApp(id) {
+      const echo = await set('x:OAuthGrant/set', { destroy: [id] })
+      const refused = echo.notDestroyed?.[id]
+      if (refused !== undefined) throw toSetError(refused)
     },
 
     async destroySpamSample(id) {

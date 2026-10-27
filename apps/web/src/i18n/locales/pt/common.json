@@ -604,6 +604,27 @@
         "mismatch": "As duas novas palavras-passe não coincidem.",
         "devices": "A seguir, terá de iniciar sessão novamente aqui e introduzir a nova palavra-passe nas aplicações de e-mail dos seus outros dispositivos. As palavras-passe de aplicação continuam a funcionar."
       },
+      "connectedApps": {
+        "label": "Aplicações com sessão iniciada",
+        "hint": "Aplicações que iniciaram sessão na tua conta através da página de início de sessão do servidor. Terminar a sessão de uma aplicação corta o acesso de imediato; a tua palavra-passe e as palavras-passe de aplicação não mudam.",
+        "empty": "Nenhuma aplicação iniciou sessão desta forma.",
+        "fullAccess": "Acesso total à tua conta",
+        "signInOnly": "Apenas início de sessão, sem acesso aos teus dados",
+        "access": "Acesso a {{list}}",
+        "scopeMail": "correio",
+        "scopeContacts": "contactos",
+        "scopeCalendars": "calendários",
+        "scopeFiles": "ficheiros",
+        "lastUsed": "Última utilização: {{date}}",
+        "since": "Sessão iniciada em {{date}}",
+        "from": "De {{address}}",
+        "signOut": "Terminar a sessão de {{name}}",
+        "signOutTitle": "Terminar a sessão desta aplicação?",
+        "signOutBody": "{{name}} perde o acesso à tua conta e tem de iniciar sessão novamente. Se for a aplicação que estás a usar agora, isso inclui esta.",
+        "signOutCancel": "Cancelar",
+        "signOutConfirm": "Terminar sessão",
+        "signedOut": "A sessão de {{name}} foi terminada."
+      },
       "appPasswords": {
         "label": "Palavras-passe de aplicação",
         "hint": "Uma palavra-passe separada para cada aplicação de e-mail nos seus dispositivos. Revogar uma delas não afeta a palavra-passe da conta nem nenhuma das outras aplicações.",

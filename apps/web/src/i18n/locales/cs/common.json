@@ -610,6 +610,27 @@
         "mismatch": "Obě nová hesla se neshodují.",
         "devices": "Potom se zde přihlásíte znovu a nové heslo zadáte i v poštovních aplikacích na svých ostatních zařízeních. Hesla aplikací platí dál."
       },
+      "connectedApps": {
+        "label": "Přihlášené aplikace",
+        "hint": "Aplikace, které se k vašemu účtu přihlásily přes přihlašovací stránku serveru. Odhlášením aplikace její přístup okamžitě skončí; vaše heslo a hesla aplikací zůstanou beze změny.",
+        "empty": "Tímto způsobem není přihlášená žádná aplikace.",
+        "fullAccess": "Plný přístup k vašemu účtu",
+        "signInOnly": "Pouze přihlášení, bez přístupu k vašim datům",
+        "access": "Přístup k: {{list}}",
+        "scopeMail": "poště",
+        "scopeContacts": "kontaktům",
+        "scopeCalendars": "kalendářům",
+        "scopeFiles": "souborům",
+        "lastUsed": "Naposledy použito {{date}}",
+        "since": "Přihlášeno {{date}}",
+        "from": "Z adresy {{address}}",
+        "signOut": "Odhlásit {{name}}",
+        "signOutTitle": "Odhlásit tuto aplikaci?",
+        "signOutBody": "{{name}} ztratí přístup k vašemu účtu a bude se muset přihlásit znovu. Pokud je to aplikace, kterou právě používáte, platí to i pro ni.",
+        "signOutCancel": "Zrušit",
+        "signOutConfirm": "Odhlásit",
+        "signedOut": "Aplikace {{name}} byla odhlášena."
+      },
       "appPasswords": {
         "label": "Hesla aplikací",
         "hint": "Samostatné heslo pro každou poštovní aplikaci na vašich zařízeních. Odvoláním jednoho zůstane heslo účtu i všechny ostatní aplikace nedotčeny.",

@@ -598,6 +598,27 @@
         "mismatch": "Die beiden neuen Passwörter sind nicht gleich.",
         "devices": "Danach meldest du dich hier neu an und trägst das neue Passwort in den Mailprogrammen auf deinen anderen Geräten nach. App-Passwörter gelten weiter."
       },
+      "connectedApps": {
+        "label": "Angemeldete Apps",
+        "hint": "Apps, die sich über die Anmeldeseite des Servers bei deinem Konto angemeldet haben. Meldest du eine ab, endet ihr Zugriff sofort; dein Passwort und deine App-Passwörter bleiben unverändert.",
+        "empty": "Keine App ist auf diese Weise angemeldet.",
+        "fullAccess": "Voller Zugriff auf dein Konto",
+        "signInOnly": "Nur Anmeldung, kein Zugriff auf deine Daten",
+        "access": "Zugriff auf {{list}}",
+        "scopeMail": "E-Mail",
+        "scopeContacts": "Kontakte",
+        "scopeCalendars": "Kalender",
+        "scopeFiles": "Dateien",
+        "lastUsed": "Zuletzt verwendet am {{date}}",
+        "since": "Angemeldet seit {{date}}",
+        "from": "Von {{address}}",
+        "signOut": "{{name}} abmelden",
+        "signOutTitle": "Diese App abmelden?",
+        "signOutBody": "{{name}} verliert den Zugriff auf dein Konto und muss sich erneut anmelden. Ist das die App, die du gerade benutzt, gilt das auch für diese.",
+        "signOutCancel": "Abbrechen",
+        "signOutConfirm": "Abmelden",
+        "signedOut": "{{name}} wurde abgemeldet."
+      },
       "appPasswords": {
         "label": "App-Passwörter",
         "hint": "Ein eigenes Passwort für jedes Mailprogramm auf deinen Geräten. Widerrufst du eines, bleiben dein Kontopasswort und alle anderen Programme unberührt.",

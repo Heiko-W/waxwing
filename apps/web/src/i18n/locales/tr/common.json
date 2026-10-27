@@ -598,6 +598,27 @@
         "mismatch": "İki yeni parola aynı değil.",
         "devices": "Sonrasında burada yeniden oturum açar ve diğer cihazlarınızdaki posta uygulamalarına yeni parolayı girersiniz. Uygulama parolaları çalışmayı sürdürür."
       },
+      "connectedApps": {
+        "label": "Oturum açmış uygulamalar",
+        "hint": "Hesabınıza sunucunun kendi oturum açma sayfası üzerinden giriş yapmış uygulamalar. Bir uygulamanın oturumunu kapatmak erişimini hemen sonlandırır; parolanız ve uygulama parolalarınız değişmez.",
+        "empty": "Bu şekilde oturum açmış uygulama yok.",
+        "fullAccess": "Hesabınıza tam erişim",
+        "signInOnly": "Yalnızca oturum açma, verilerinize erişim yok",
+        "access": "Erişim: {{list}}",
+        "scopeMail": "e-posta",
+        "scopeContacts": "kişiler",
+        "scopeCalendars": "takvimler",
+        "scopeFiles": "dosyalar",
+        "lastUsed": "Son kullanım: {{date}}",
+        "since": "Oturum açma: {{date}}",
+        "from": "Şuradan: {{address}}",
+        "signOut": "{{name}} oturumunu kapat",
+        "signOutTitle": "Bu uygulamanın oturumu kapatılsın mı?",
+        "signOutBody": "{{name}} hesabınıza erişimini kaybeder ve yeniden oturum açması gerekir. Şu anda kullandığınız uygulama buysa, bu da onu kapsar.",
+        "signOutCancel": "İptal",
+        "signOutConfirm": "Oturumu kapat",
+        "signedOut": "{{name}} oturumu kapatıldı."
+      },
       "appPasswords": {
         "label": "Uygulama parolaları",
         "hint": "Cihazlarınızdaki her posta uygulaması için ayrı bir parola. Birini geçersiz kılmak, hesap parolanıza ve diğer uygulamalara dokunmaz.",

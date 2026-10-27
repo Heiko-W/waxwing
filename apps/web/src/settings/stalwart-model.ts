@@ -64,6 +64,26 @@ export interface WirePublicKey {
   readonly emailAddresses?: Readonly<Record<string, boolean>> | null
 }
 
+/**
+ * An app signed in to the account over OAuth — Stalwart 1.0's `x:OAuthGrant` ("connected
+ * applications"). Read-only apart from `destroy`: the registry refuses create and update, and a
+ * destroy signs the app out. **Absent on 0.16**, where the method does not exist.
+ */
+export interface WireOAuthGrant {
+  readonly id: Id
+  /** A grant created at the consent screen and not yet exchanged for a token. Not an app yet. */
+  readonly pending?: boolean
+  readonly clientId?: string
+  readonly clientName?: string | null
+  /** `registered` | `dynamic` | `metadataDocument` | `firstParty` (measured; `firstParty` and `registered` on 1.0.0). */
+  readonly clientKind?: string
+  /** A SET of `mail` | `contacts` | `calendars` | `files`. */
+  readonly scopes?: Readonly<Record<string, boolean>> | null
+  readonly remoteIp?: string | null
+  readonly createdAt?: string
+  readonly lastUsedAt?: string
+}
+
 export interface WireSpamSample {
   readonly id: Id
   readonly from?: string
@@ -89,6 +109,25 @@ export interface AppPasswordView {
    * password does not work" and "this password works only from the office".
    */
   readonly restricted: boolean
+}
+
+/** What a connected app may reach. The wire names are Stalwart's `OAuthScope` enum, as measured. */
+export type AppScope = 'mail' | 'contacts' | 'calendars' | 'files'
+const APP_SCOPES: readonly AppScope[] = ['mail', 'contacts', 'calendars', 'files']
+
+export interface ConnectedAppView {
+  readonly id: Id
+  /** Its own name, else the host of its client id, else the client id. Never empty. */
+  readonly name: string
+  /**
+   * `firstParty` is a trusted app whose token carries the account's full permissions (Stalwart's own
+   * interface, or an app an administrator marked so); everything else is limited to `scopes`.
+   */
+  readonly fullAccess: boolean
+  readonly scopes: readonly AppScope[]
+  readonly createdAt: string | null
+  readonly lastUsedAt: string | null
+  readonly remoteIp: string | null
 }
 
 export type EncryptionView =
@@ -132,6 +171,52 @@ export function toAppPassword(wire: WireAppPassword, now: number): AppPasswordVi
       (wire.permissions?.['@type'] !== undefined && wire.permissions['@type'] !== 'Inherit') ||
       setKeys(wire.allowedIps).length > 0,
   }
+}
+
+/** A name a person can recognise a client by: its own, else where it lives, else its id. */
+function clientLabel(wire: WireOAuthGrant): string {
+  const own = wire.clientName?.trim()
+  if (own !== undefined && own !== '') return own
+  const id = wire.clientId ?? ''
+  try {
+    const host = new URL(id).host
+    if (host !== '') return host
+  } catch {
+    // Not a URL (a registered client's free-form id, a dynamic `swc1.…` one): the id is all there is.
+  }
+  return id === '' ? wire.id : id
+}
+
+/**
+ * One grant, as a row. `null` for a grant still at the consent screen: it is not an app that is
+ * signed in, and listing it would offer to revoke something the person has not yet approved.
+ */
+export function toConnectedApp(wire: WireOAuthGrant): ConnectedAppView | null {
+  if (wire.pending === true) return null
+  const granted = setKeys(wire.scopes)
+  return {
+    id: wire.id,
+    name: clientLabel(wire),
+    fullAccess: wire.clientKind === 'firstParty',
+    // In the enum's order, and only names this client has a word for: a scope a later server adds
+    // is not shown as a raw key, and not guessed at.
+    scopes: APP_SCOPES.filter((scope) => granted.includes(scope)),
+    createdAt: wire.createdAt ?? null,
+    lastUsedAt: wire.lastUsedAt ?? null,
+    remoteIp: wire.remoteIp ?? null,
+  }
+}
+
+/** Most recently used first; a grant with no usable date sorts last, then by name for a stable list. */
+export function sortConnectedApps(apps: readonly ConnectedAppView[]): ConnectedAppView[] {
+  const at = (app: ConnectedAppView): number => {
+    const parsed = app.lastUsedAt === null ? Number.NaN : Date.parse(app.lastUsedAt)
+    return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY
+  }
+  return [...apps].sort((a, b) => {
+    const delta = at(b) - at(a)
+    return delta !== 0 && !Number.isNaN(delta) ? delta : a.name.localeCompare(b.name)
+  })
 }
 
 export function toPublicKey(wire: WirePublicKey): PublicKeyView {

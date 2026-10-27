@@ -604,6 +604,27 @@
         "mismatch": "Les deux nouveaux mots de passe ne sont pas identiques.",
         "devices": "Vous devrez ensuite vous reconnecter ici et saisir le nouveau mot de passe dans les applications de messagerie de vos autres appareils. Les mots de passe d’application restent valables."
       },
+      "connectedApps": {
+        "label": "Applications connectées",
+        "hint": "Applications qui se sont connectées à votre compte via la page de connexion du serveur. Déconnecter une application met fin à son accès immédiatement ; votre mot de passe et vos mots de passe d’application ne changent pas.",
+        "empty": "Aucune application n’est connectée de cette manière.",
+        "fullAccess": "Accès complet à votre compte",
+        "signInOnly": "Connexion uniquement, sans accès à vos données",
+        "access": "Accès à : {{list}}",
+        "scopeMail": "courrier",
+        "scopeContacts": "contacts",
+        "scopeCalendars": "agendas",
+        "scopeFiles": "fichiers",
+        "lastUsed": "Dernière utilisation : {{date}}",
+        "since": "Connectée le {{date}}",
+        "from": "Depuis {{address}}",
+        "signOut": "Déconnecter {{name}}",
+        "signOutTitle": "Déconnecter cette application ?",
+        "signOutBody": "{{name}} perd l’accès à votre compte et devra se reconnecter. Si c’est l’application que vous utilisez en ce moment, cela vaut aussi pour elle.",
+        "signOutCancel": "Annuler",
+        "signOutConfirm": "Déconnecter",
+        "signedOut": "{{name}} a été déconnectée."
+      },
       "appPasswords": {
         "label": "Mots de passe d’application",
         "hint": "Un mot de passe distinct pour chaque application de messagerie de vos appareils. En révoquer un laisse intacts le mot de passe de votre compte et toutes les autres applications.",
