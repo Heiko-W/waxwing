@@ -334,6 +334,43 @@ test.describe('M1.9 read suite', () => {
     await expect.poll(signedInApps, { timeout: 15_000 }).toBe(before - 1)
   })
 
+  test('signing out revokes the sign-in on the server (Stalwart 1.0)', async ({ page }) => {
+    // ADR-006 had to assume a leaked refresh token could not be cut short: 0.16 has no revocation
+    // endpoint. 1.0 advertises one, and `revokeToken` fires iff discovery lists it — which the
+    // controller test proves against a fake. This proves it against the real server: the sign-in's
+    // own grant is gone from the account afterwards, not merely forgotten by this browser.
+    const discovery = (await (
+      await page.request.get('/.well-known/openid-configuration')
+    ).json()) as {
+      revocation_endpoint?: string
+    }
+    test.skip(discovery.revocation_endpoint === undefined, 'this server has no revocation endpoint')
+    const alice = jmapAs(ACCOUNTS.alice)
+    const signedInApps = async (): Promise<number> => {
+      const answer = await alice.call(
+        ['urn:ietf:params:jmap:core', 'urn:stalwart:jmap'],
+        [['x:OAuthGrant/get', { accountId: await alice.account() }, '0']],
+      )
+      const list = (answer.methodResponses[0]?.[1]?.list ?? []) as { pending?: boolean }[]
+      return list.filter((grant) => grant.pending !== true).length
+    }
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await signInAtServer(page, { user: CREDENTIALS.user, pass: CREDENTIALS.pass })
+    await openInbox(page)
+    const signedIn = await signedInApps()
+    expect(signedIn).toBeGreaterThan(0)
+
+    await page.getByRole('button', { name: 'Account' }).click()
+    await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click()
+    await expect(page.getByRole('heading', { level: 1, name: /^Webmail for/ })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
+
+    await expect.poll(signedInApps, { timeout: 15_000 }).toBe(signedIn - 1)
+  })
+
   test('cross-tab: a flag in one tab reflects in another', async ({ page, context }) => {
     test.setTimeout(60_000)
     // Tab A signs in and persists the session; tab B (same context → same replica) restores it.
