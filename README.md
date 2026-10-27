@@ -127,7 +127,13 @@ broke too, and the people search in the share dialogs finds nobody until an admi
 directory queries. All of it is fixed and tested; [ADR-048](docs/adr/048-stalwart-1-0-is-a-second-baseline.md)
 has the table. **If you run Stalwart, upgrade Waxwing before you migrate it to 1.0** — a migrated
 server that still holds an older bundle has no webmail until the next fetch. The CI now runs the
-whole gate against both servers.
+whole gate against both servers. The release also takes **DOMPurify to 3.4.17**, which closes a
+critical and a high advisory in the library that cleans every HTML mail (both concern options
+Waxwing does not set — `SAFE_FOR_TEMPLATES` and `IN_PLACE` — which is why it was not urgent, not why it
+was skipped), and 13 more dependency alerts. **Five development-only alerts on Vite stay open on
+purpose:** the fix is in Vite 8.1.6, whose bundler splits the same source into different chunks and
+takes the initial JavaScript from 295.46 to 310.19 kB, over the 300 kB budget. They concern Vite's
+dev server, not what ships.
 
 New with 1.0, in **Settings → Account & security**: the apps signed in to your account — what each
 may reach, when it was last used, from where — and a **Sign out** for each. Signing out of Waxwing
