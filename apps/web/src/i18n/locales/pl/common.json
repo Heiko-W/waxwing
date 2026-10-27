@@ -610,6 +610,27 @@
         "mismatch": "Oba nowe hasła nie są takie same.",
         "devices": "Następnie zalogujesz się tutaj ponownie i wpiszesz nowe hasło w programach pocztowych na pozostałych urządzeniach. Hasła aplikacji działają dalej."
       },
+      "connectedApps": {
+        "label": "Zalogowane aplikacje",
+        "hint": "Aplikacje, które zalogowały się na Twoje konto przez stronę logowania serwera. Wylogowanie aplikacji natychmiast kończy jej dostęp; Twoje hasło i hasła aplikacji pozostają bez zmian.",
+        "empty": "Żadna aplikacja nie jest zalogowana w ten sposób.",
+        "fullAccess": "Pełny dostęp do Twojego konta",
+        "signInOnly": "Tylko logowanie, bez dostępu do Twoich danych",
+        "access": "Dostęp do: {{list}}",
+        "scopeMail": "poczty",
+        "scopeContacts": "kontaktów",
+        "scopeCalendars": "kalendarzy",
+        "scopeFiles": "plików",
+        "lastUsed": "Ostatnio użyto: {{date}}",
+        "since": "Zalogowano: {{date}}",
+        "from": "Z adresu {{address}}",
+        "signOut": "Wyloguj {{name}}",
+        "signOutTitle": "Wylogować tę aplikację?",
+        "signOutBody": "{{name}} straci dostęp do Twojego konta i będzie musiała zalogować się ponownie. Jeśli to aplikacja, której właśnie używasz, dotyczy to także jej.",
+        "signOutCancel": "Anuluj",
+        "signOutConfirm": "Wyloguj",
+        "signedOut": "Wylogowano aplikację {{name}}."
+      },
       "appPasswords": {
         "label": "Hasła aplikacji",
         "hint": "Osobne hasło dla każdego programu pocztowego na Twoich urządzeniach. Unieważnienie jednego nie narusza hasła konta ani żadnego innego programu.",

@@ -604,6 +604,27 @@
         "mismatch": "Las dos contraseñas nuevas no coinciden.",
         "devices": "Después tendrá que iniciar sesión aquí de nuevo e introducir la contraseña nueva en las aplicaciones de correo de sus otros dispositivos. Las contraseñas de aplicación siguen funcionando."
       },
+      "connectedApps": {
+        "label": "Aplicaciones con sesión iniciada",
+        "hint": "Aplicaciones que iniciaron sesión en tu cuenta a través de la página de acceso del propio servidor. Cerrar la sesión de una termina su acceso al instante; tu contraseña y tus contraseñas de aplicación no cambian.",
+        "empty": "Ninguna aplicación ha iniciado sesión de este modo.",
+        "fullAccess": "Acceso completo a tu cuenta",
+        "signInOnly": "Solo inicio de sesión, sin acceso a tus datos",
+        "access": "Acceso a {{list}}",
+        "scopeMail": "correo",
+        "scopeContacts": "contactos",
+        "scopeCalendars": "calendarios",
+        "scopeFiles": "archivos",
+        "lastUsed": "Último uso: {{date}}",
+        "since": "Sesión iniciada el {{date}}",
+        "from": "Desde {{address}}",
+        "signOut": "Cerrar la sesión de {{name}}",
+        "signOutTitle": "¿Cerrar la sesión de esta aplicación?",
+        "signOutBody": "{{name}} pierde el acceso a tu cuenta y tendrá que iniciar sesión de nuevo. Si es la aplicación que estás usando ahora, también incluye a esta.",
+        "signOutCancel": "Cancelar",
+        "signOutConfirm": "Cerrar sesión",
+        "signedOut": "Se cerró la sesión de {{name}}."
+      },
       "appPasswords": {
         "label": "Contraseñas de aplicación",
         "hint": "Una contraseña independiente para cada aplicación de correo de sus dispositivos. Revocar una no afecta a la contraseña de su cuenta ni a las demás aplicaciones.",

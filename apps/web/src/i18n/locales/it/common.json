@@ -604,6 +604,27 @@
         "mismatch": "Le due nuove password non coincidono.",
         "devices": "Dopo dovrai accedere di nuovo qui e inserire la nuova password nelle app di posta sugli altri tuoi dispositivi. Le password per le app continuano a funzionare."
       },
+      "connectedApps": {
+        "label": "App con accesso effettuato",
+        "hint": "App che hanno effettuato l’accesso al tuo account tramite la pagina di accesso del server. Disconnettere un’app ne interrompe subito l’accesso; la tua password e le password per app restano invariate.",
+        "empty": "Nessuna app ha effettuato l’accesso in questo modo.",
+        "fullAccess": "Accesso completo al tuo account",
+        "signInOnly": "Solo accesso, nessun accesso ai tuoi dati",
+        "access": "Accesso a {{list}}",
+        "scopeMail": "posta",
+        "scopeContacts": "contatti",
+        "scopeCalendars": "calendari",
+        "scopeFiles": "file",
+        "lastUsed": "Ultimo utilizzo: {{date}}",
+        "since": "Accesso effettuato il {{date}}",
+        "from": "Da {{address}}",
+        "signOut": "Disconnetti {{name}}",
+        "signOutTitle": "Disconnettere questa app?",
+        "signOutBody": "{{name}} perde l’accesso al tuo account e deve accedere di nuovo. Se è l’app che stai usando adesso, vale anche per questa.",
+        "signOutCancel": "Annulla",
+        "signOutConfirm": "Disconnetti",
+        "signedOut": "{{name}} è stata disconnessa."
+      },
       "appPasswords": {
         "label": "Password per le app",
         "hint": "Una password distinta per ogni app di posta sui tuoi dispositivi. Revocarne una non tocca né la password dell’account né le altre app.",

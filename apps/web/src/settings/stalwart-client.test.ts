@@ -33,7 +33,7 @@ const ACC = 'b'
 type Call = [name: string, args: Record<string, unknown>, id: string]
 type Echo = Record<string, unknown>
 
-/** The five `/get` answers the fixture server really returns for a fresh account. */
+/** The six `/get` answers a 1.0 fixture server really returns for a fresh account. */
 const EMPTY_READS: Readonly<Record<string, Echo>> = {
   'x:AppPassword/get': { accountId: ACC, list: [], notFound: ['a'] },
   'x:AccountPassword/get': {
@@ -56,6 +56,7 @@ const EMPTY_READS: Readonly<Record<string, Echo>> = {
   },
   'x:PublicKey/get': { accountId: ACC, list: [], notFound: [] },
   'x:SpamTrainingSample/get': { accountId: ACC, list: [], notFound: [] },
+  'x:OAuthGrant/get': { accountId: ACC, list: [], notFound: [] },
 }
 
 interface Fake {
@@ -72,7 +73,7 @@ interface Fake {
  */
 function fakeClient(
   options: {
-    reads?: Record<string, Echo | 'forbidden'>
+    reads?: Record<string, Echo | 'forbidden' | 'unknownMethod'>
     onSet?: (name: string, args: Record<string, unknown>) => Echo
   } = {},
 ): Fake {
@@ -92,6 +93,11 @@ function fakeClient(
             { type: 'forbidden', description: 'You are not authorized to perform this action' },
             id,
           ])
+          continue
+        }
+        if (override === 'unknownMethod') {
+          // What Stalwart 0.16 answers for an object that does not exist there: local to the call.
+          responses.push(['error', { type: 'unknownMethod', description: name }, id])
           continue
         }
         if (name.endsWith('/get')) {
@@ -170,13 +176,13 @@ describe('serverSupportsSelfService', () => {
 describe('makeSelfServiceClient — reading', () => {
   it('opts the proprietary URN into `using`, on every request', async () => {
     // The method-name→capability derivation cannot see `x:` prefixes (they fall back to core), so
-    // without this the server answers `unknownMethod` to all five reads.
+    // without this the server answers `unknownMethod` to all six reads.
     const fake = fakeClient()
     await makeSelfServiceClient(fake.client, ACC).load()
     expect(fake.using).toEqual([[STALWART_CAPABILITY]])
   })
 
-  it('takes all five reads in ONE round trip', async () => {
+  it('takes all six reads in ONE round trip', async () => {
     const fake = fakeClient()
     await makeSelfServiceClient(fake.client, ACC).load()
 
@@ -187,6 +193,7 @@ describe('makeSelfServiceClient — reading', () => {
       'x:AccountSettings/get',
       'x:PublicKey/get',
       'x:SpamTrainingSample/get',
+      'x:OAuthGrant/get',
     ])
   })
 
@@ -366,6 +373,90 @@ describe('makeSelfServiceClient — app passwords', () => {
     await expect(
       makeSelfServiceClient(refused.client, ACC).destroyAppPassword('b'),
     ).rejects.toBeInstanceOf(StalwartSetError)
+  })
+})
+
+describe('makeSelfServiceClient — connected applications (Stalwart 1.0)', () => {
+  // Verbatim from `x:OAuthGrant/get` on v1.0.0 after three real sign-ins, 2026-10-27.
+  const GRANTS = {
+    accountId: ACC,
+    list: [
+      {
+        pending: false,
+        clientId: 'http://localhost:5174/oauth-client.json',
+        clientName: 'Waxwing e2e nf',
+        clientKind: 'registered',
+        scopes: { mail: true },
+        remoteIp: '172.20.0.1',
+        createdAt: '2026-10-27T16:05:02Z',
+        lastUsedAt: '2026-10-27T16:05:02Z',
+        generation: 0,
+        id: 'c',
+      },
+      {
+        pending: false,
+        clientId: 'http://localhost:5173/oauth-client.json',
+        clientName: 'Waxwing e2e',
+        clientKind: 'firstParty',
+        scopes: { mail: true, contacts: true, calendars: true, files: true },
+        remoteIp: '172.20.0.1',
+        createdAt: '2026-10-27T16:04:57Z',
+        lastUsedAt: '2026-10-27T16:09:00Z',
+        generation: 0,
+        id: 'b',
+      },
+      { pending: true, clientId: 'x', clientKind: 'registered', scopes: {}, id: 'p' },
+    ],
+    notFound: [],
+  }
+
+  it('reads the grants into rows, most recently used first, without the ones still at consent', async () => {
+    const fake = fakeClient({ reads: { 'x:OAuthGrant/get': GRANTS } })
+
+    const snapshot = await makeSelfServiceClient(fake.client, ACC).load()
+
+    expect(snapshot.connectedApps?.map((app) => app.id)).toEqual(['b', 'c'])
+    expect(snapshot.connectedApps?.[0]).toMatchObject({
+      name: 'Waxwing e2e',
+      fullAccess: true,
+      scopes: ['mail', 'contacts', 'calendars', 'files'],
+      remoteIp: '172.20.0.1',
+    })
+    expect(snapshot.connectedApps?.[1]).toMatchObject({ fullAccess: false, scopes: ['mail'] })
+  })
+
+  it('is ABSENT on a server that has no such object — and the rest of the section still loads', async () => {
+    // 0.16 answers `unknownMethod` for `x:OAuthGrant/get`, local to that one call. If that threw, the
+    // whole Account & security screen would say "could not be loaded" on every 0.16 server.
+    const fake = fakeClient({ reads: { 'x:OAuthGrant/get': 'unknownMethod' } })
+
+    const snapshot = await makeSelfServiceClient(fake.client, ACC).load()
+
+    expect(snapshot.connectedApps).toBeNull()
+    expect(snapshot.passwordReadable).toBe(true)
+    expect(snapshot.language).toBe('en_US')
+  })
+
+  it('shows an account with no signed-in app as an EMPTY list, not as an absent block', async () => {
+    const snapshot = await makeSelfServiceClient(fakeClient().client, ACC).load()
+    expect(snapshot.connectedApps).toEqual([])
+  })
+
+  it('signs an app out by destroying its grant, and reports a refusal', async () => {
+    const sets: [string, Record<string, unknown>][] = []
+    const fake = fakeClient({
+      onSet: (name, args) => {
+        sets.push([name, args])
+        return { accountId: ACC, notDestroyed: { b: { type: 'forbidden', description: 'No.' } } }
+      },
+    })
+    const selfService = makeSelfServiceClient(fake.client, ACC)
+
+    const thrown = await rejection(selfService.revokeConnectedApp('b'))
+
+    expect(sets).toEqual([['x:OAuthGrant/set', { accountId: ACC, destroy: ['b'] }]])
+    expect(thrown).toBeInstanceOf(StalwartSetError)
+    expect((thrown as StalwartSetError).type).toBe('forbidden')
   })
 })
 

@@ -9,7 +9,13 @@ import {
   seedReadMail,
 } from '../stalwart/seed-read.mjs'
 import { ACCOUNTS, jmapAs } from '../stalwart/seed-write.mjs'
-import { revealPasswordForm, SYNC_BUDGET_MS, SYNC_POLL, signInAtServer } from './helpers'
+import {
+  openSettings,
+  revealPasswordForm,
+  SYNC_BUDGET_MS,
+  SYNC_POLL,
+  signInAtServer,
+} from './helpers'
 
 /**
  * A reading-pane action, wherever the bar has put it. See `bulkAction` in offline.spec.ts for why
@@ -276,6 +282,56 @@ test.describe('M1.9 read suite', () => {
     // completes the PKCE code exchange and mounts the shell.
     await signInAtServer(page, { user: CREDENTIALS.user, pass: CREDENTIALS.pass })
     await openInbox(page)
+  })
+
+  test('the apps signed in to the account are listed, and one can be signed out (Stalwart 1.0)', async ({
+    page,
+  }) => {
+    // Connected applications are Stalwart 1.0's `x:OAuthGrant`; 0.16 has no such object, and the
+    // section hides the block there (security.test.tsx). The server says which it is.
+    const discovery = (await (
+      await page.request.get('/.well-known/openid-configuration')
+    ).json()) as {
+      client_id_metadata_document_supported?: boolean
+    }
+    test.skip(
+      discovery.client_id_metadata_document_supported !== true,
+      'connected applications exist on Stalwart 1.0 only',
+    )
+    const alice = jmapAs(ACCOUNTS.alice)
+    const signedInApps = async (): Promise<number> => {
+      const answer = await alice.call(
+        ['urn:ietf:params:jmap:core', 'urn:stalwart:jmap'],
+        [['x:OAuthGrant/get', { accountId: await alice.account() }, '0']],
+      )
+      const list = (answer.methodResponses[0]?.[1]?.list ?? []) as { pending?: boolean }[]
+      return list.filter((grant) => grant.pending !== true).length
+    }
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await signInAtServer(page, { user: CREDENTIALS.user, pass: CREDENTIALS.pass })
+    await openInbox(page)
+
+    await openSettings(page, 'Account & security')
+    await expect(page.getByText('Signed-in apps', { exact: true })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
+    // The grant this very sign-in made. The fixture registers the app as first-party, so it is
+    // "full access" — and that also proves the token carried the self-service registry at all.
+    await expect(page.getByText('Full access to your account').first()).toBeVisible()
+    const before = await signedInApps()
+    expect(before).toBeGreaterThan(0)
+
+    await page.getByRole('button', { name: 'Sign out Waxwing e2e' }).first().click()
+    await page
+      .getByRole('dialog', { name: 'Sign this app out?' })
+      .getByRole('button', { name: 'Sign out', exact: true })
+      .click()
+    await expect(page.getByText('Waxwing e2e was signed out.')).toBeVisible()
+
+    // The server agrees, not just the screen.
+    await expect.poll(signedInApps, { timeout: 15_000 }).toBe(before - 1)
   })
 
   test('cross-tab: a flag in one tab reflects in another', async ({ page, context }) => {

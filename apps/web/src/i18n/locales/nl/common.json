@@ -598,6 +598,27 @@
         "mismatch": "De twee nieuwe wachtwoorden zijn niet gelijk.",
         "devices": "Daarna log je hier opnieuw in en voer je het nieuwe wachtwoord in de mailapps op je andere apparaten in. App-wachtwoorden blijven werken."
       },
+      "connectedApps": {
+        "label": "Aangemelde apps",
+        "hint": "Apps die via de aanmeldpagina van de server bij je account zijn aangemeld. Een app afmelden beëindigt meteen de toegang; je wachtwoord en je app-wachtwoorden blijven ongewijzigd.",
+        "empty": "Er is op deze manier geen app aangemeld.",
+        "fullAccess": "Volledige toegang tot je account",
+        "signInOnly": "Alleen aanmelden, geen toegang tot je gegevens",
+        "access": "Toegang tot {{list}}",
+        "scopeMail": "e-mail",
+        "scopeContacts": "contacten",
+        "scopeCalendars": "agenda’s",
+        "scopeFiles": "bestanden",
+        "lastUsed": "Laatst gebruikt op {{date}}",
+        "since": "Aangemeld op {{date}}",
+        "from": "Vanaf {{address}}",
+        "signOut": "{{name}} afmelden",
+        "signOutTitle": "Deze app afmelden?",
+        "signOutBody": "{{name}} verliest de toegang tot je account en moet opnieuw aanmelden. Is dit de app die je nu gebruikt, dan geldt dat ook voor deze.",
+        "signOutCancel": "Annuleren",
+        "signOutConfirm": "Afmelden",
+        "signedOut": "{{name}} is afgemeld."
+      },
       "appPasswords": {
         "label": "App-wachtwoorden",
         "hint": "Een apart wachtwoord voor elke mailapp op je apparaten. Trek je er een in, dan blijven je accountwachtwoord en alle andere apps ongemoeid.",
