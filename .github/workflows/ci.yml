@@ -125,3 +125,41 @@ jobs:
           name: playwright-report
           path: e2e/playwright-report/
           retention-days: 7
+
+  # The SAME gate against the other supported server — TEMPORARY (ADR-048).
+  #
+  # Waxwing supports Stalwart 1.0 and 0.16.27, and the fixture default is 1.0.0, so the job above says
+  # nothing about 0.16: an Application field, a wire format or an error name that changed between the
+  # two would pass here and break an operator who has not migrated yet. Stalwart 1.0 changed eight
+  # things a client sees without naming them in its release notes; a gate that tests only one side of
+  # that is a gate that tells half the story. `WAXWING_STALWART_TAG` is the fixture's own switch
+  # (e2e/stalwart/docker-compose.yml), nothing else differs.
+  #
+  # A job of its own and not a matrix over the job above, on purpose: a matrix renames the job
+  # ("e2e (…, v1.0.0-alpine)"), and the ruleset on `main` requires the check by its current name.
+  # This one is therefore informative until someone adds it to the ruleset. REMOVE it, and
+  # `WAXWING_STALWART_TAG`'s second value, when 0.16 is no longer supported.
+  e2e-stalwart-0-16:
+    name: e2e (Stalwart 0.16.27)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      WAXWING_STALWART_TAG: v0.16.27-alpine
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify:e2e
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report-stalwart-0-16
+          path: e2e/playwright-report/
+          retention-days: 7
