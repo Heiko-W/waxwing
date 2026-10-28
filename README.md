@@ -73,7 +73,7 @@ you can check what you are upgrading to:
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing                       # arrived intact
 gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
-  --source-ref refs/tags/v0.26.0                               # built here, from THAT TAG
+  --source-ref refs/tags/v0.26.1                               # built here, from THAT TAG
 ```
 
 `--ignore-missing` because `SHA256SUMS` lists all three artefacts and you downloaded one;
@@ -109,13 +109,21 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.26.0 — feature-complete, and deliberately not 1.0 yet.**
+**v0.26.1 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: 6 043 unit tests, 20
-integration tests against a live Stalwart, and 257 end-to-end tests across the **seven** Playwright
-suites the gate runs (255 on Stalwart 0.16.27, where the two tests about signed-in apps have
-nothing to test). Performance and accessibility are measured rather than asserted — the numbers are
+Every planned work package is done and the release gate is signed off: 6 053 unit tests, 20
+integration tests against a live Stalwart, and 259 end-to-end tests (two more skipped) across the
+**seven** Playwright suites the gate runs, on Stalwart 1.0; the CI runs the same suites against
+0.16.27 as well. Performance and accessibility are measured rather than asserted — the numbers are
 in the [implementation plan](docs/implementation-plan.md).
+
+**v0.26.1 is two small fixes from daily use.** Triage stacks Undo toasts, which by design
+([ADR-021](docs/adr/021-undo-is-a-chord-and-a-toast-that-waits.md)) never expire; from two of them
+on there is now a **Dismiss all** button that closes the pile without running any Undo. And the
+unread count on the installed app's icon has always followed the notifications switch in
+**Settings → Notifications**, which nothing there said — a sentence under the switch says so now,
+shown only where it is true (the browser has the Badging API and the permission is not blocked).
+Whether macOS actually paints the badge has not been checked on a real Mac.
 
 **v0.26.0 runs on Stalwart 1.0 and on 0.16.27, and the same suites are green on both.** Stalwart
 1.0.0 shipped on 26 October 2026 and its release notes name almost nothing a client sees. Run
