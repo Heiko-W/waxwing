@@ -979,7 +979,8 @@
     },
     "toast": {
       "region": "Stavová hlášení",
-      "dismiss": "Zavřít"
+      "dismiss": "Zavřít",
+      "dismissAll": "Zavřít vše"
     },
     "spinner": {
       "label": "Načítání"

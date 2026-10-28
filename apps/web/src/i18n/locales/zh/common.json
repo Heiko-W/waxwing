@@ -937,7 +937,8 @@
     },
     "toast": {
       "region": "状态消息",
-      "dismiss": "关闭"
+      "dismiss": "关闭",
+      "dismissAll": "全部关闭"
     },
     "spinner": {
       "label": "正在加载"

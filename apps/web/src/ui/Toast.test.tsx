@@ -177,6 +177,67 @@ describe('Toast', () => {
     await waitForElementToBeRemoved(() => screen.queryByText('Ephemeral toast'))
   })
 
+  // ADR-021 keeps every toast with an Undo on screen until it is used, so triaging several messages
+  // stacks several of them. One toast already has its own Dismiss; "Dismiss all" is for the pile.
+  describe('Dismiss all', () => {
+    it('is absent for a single toast, where the toast’s own Dismiss is the whole job', async () => {
+      const user = userEvent.setup()
+      withProvider()
+      await user.click(screen.getByRole('button', { name: 'Undoable' }))
+      expect(screen.queryByRole('button', { name: 'Dismiss all' })).toBeNull()
+    })
+
+    it('appears from two toasts and clears every one of them, action-bearing or not', async () => {
+      onUndo.mockClear()
+      onRedo.mockClear()
+      const user = userEvent.setup()
+      withProvider()
+      await user.click(screen.getByRole('button', { name: 'Undoable' }))
+      await user.click(screen.getByRole('button', { name: 'Undoable 2' }))
+      await user.click(screen.getByRole('button', { name: 'Fail' })) // assertive region too
+
+      await user.click(screen.getByRole('button', { name: 'Dismiss all' }))
+
+      expect(screen.queryByText('Sending…')).toBeNull()
+      expect(screen.queryByText('Second undoable')).toBeNull()
+      expect(screen.queryByText('Send failed')).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Dismiss all' })).toBeNull()
+      // Closing is not undoing: dismissing the offer must never run it.
+      expect(onUndo).not.toHaveBeenCalled()
+      expect(onRedo).not.toHaveBeenCalled()
+    })
+
+    it('goes away again when the pile shrinks to one toast', async () => {
+      const user = userEvent.setup()
+      withProvider()
+      await user.click(screen.getByRole('button', { name: 'Undoable' }))
+      await user.click(screen.getByRole('button', { name: 'Undoable 2' }))
+      expect(screen.getByRole('button', { name: 'Dismiss all' })).toBeInTheDocument()
+
+      await user.click(screen.getAllByRole('button', { name: 'Dismiss' })[0] as HTMLElement)
+
+      expect(screen.queryByRole('button', { name: 'Dismiss all' })).toBeNull()
+    })
+
+    it('lives outside the live regions, so it is not announced as a status message', async () => {
+      const user = userEvent.setup()
+      withProvider()
+      await user.click(screen.getByRole('button', { name: 'Undoable' }))
+      await user.click(screen.getByRole('button', { name: 'Undoable 2' }))
+
+      const button = screen.getByRole('button', { name: 'Dismiss all' })
+      expect(button.closest('[aria-live]')).toBeNull()
+    })
+
+    it('has no accessibility violations', async () => {
+      const user = userEvent.setup()
+      withProvider()
+      await user.click(screen.getByRole('button', { name: 'Sticky' }))
+      await user.click(screen.getByRole('button', { name: 'Undoable' }))
+      await expectNoA11yViolations(document.body)
+    })
+  })
+
   it('refuses to run useToast outside a provider', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(() => render(<Trigger />)).toThrow(/ToastProvider/)

@@ -979,7 +979,8 @@
     },
     "toast": {
       "region": "Komunikaty o stanie",
-      "dismiss": "Zamknij"
+      "dismiss": "Zamknij",
+      "dismissAll": "Zamknij wszystkie"
     },
     "spinner": {
       "label": "Wczytywanie"

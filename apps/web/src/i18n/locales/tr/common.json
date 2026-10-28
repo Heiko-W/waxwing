@@ -951,7 +951,8 @@
     },
     "toast": {
       "region": "Durum iletileri",
-      "dismiss": "Kapat"
+      "dismiss": "Kapat",
+      "dismissAll": "Tümünü kapat"
     },
     "spinner": {
       "label": "Yükleniyor"
