@@ -951,7 +951,8 @@
     },
     "toast": {
       "region": "Status messages",
-      "dismiss": "Dismiss"
+      "dismiss": "Dismiss",
+      "dismissAll": "Dismiss all"
     },
     "spinner": {
       "label": "Loading"

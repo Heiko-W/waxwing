@@ -80,6 +80,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts((current) => current.filter((toast) => toast.id !== id))
   }, [])
 
+  const dismissAll = useCallback(() => setToasts([]), [])
+
   const toast = useCallback((options: ToastOptions) => {
     nextId.current += 1
     const id = `toast-${nextId.current}`
@@ -122,6 +124,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             indistinguishable in a rotor. This region is also not about notifications — it is the
             app talking about what just happened. */}
         <section className={styles.region} aria-label={t('ui.toast.region')}>
+          {/* ADR-021 keeps every toast that carries an Undo on screen until it is used, so triaging
+              a handful of messages leaves a handful of toasts. This is the one-click way out, and it
+              sits OUTSIDE the live regions: a control that appears and disappears inside one would
+              be announced each time, and the toasts already are. */}
+          {toasts.length >= 2 ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              className={styles.dismissAll}
+              onClick={dismissAll}
+            >
+              {t('ui.toast.dismissAll')}
+            </Button>
+          ) : null}
           <div className={styles.stack} aria-live="assertive">
             {assertive.map((record) => (
               <ToastItem key={record.id} record={record} onDismiss={dismiss} />

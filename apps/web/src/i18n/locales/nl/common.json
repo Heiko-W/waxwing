@@ -951,7 +951,8 @@
     },
     "toast": {
       "region": "Statusmeldingen",
-      "dismiss": "Sluiten"
+      "dismiss": "Sluiten",
+      "dismissAll": "Alles sluiten"
     },
     "spinner": {
       "label": "Laden"

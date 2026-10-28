@@ -86,6 +86,14 @@
   flex: none;
 }
 
+/* `.region` is `pointer-events: none` so it never blocks the page; like `.toast`, this has to opt
+   back in or it could not be clicked. */
+.dismissAll {
+  align-self: flex-end;
+  pointer-events: auto;
+  box-shadow: var(--waxwing-shadow-2);
+}
+
 .action {
   flex: none;
   align-self: center;

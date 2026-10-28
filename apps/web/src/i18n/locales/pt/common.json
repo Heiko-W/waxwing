@@ -965,7 +965,8 @@
     },
     "toast": {
       "region": "Mensagens de estado",
-      "dismiss": "Fechar"
+      "dismiss": "Fechar",
+      "dismissAll": "Fechar tudo"
     },
     "spinner": {
       "label": "A carregar"

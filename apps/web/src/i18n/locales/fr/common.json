@@ -965,7 +965,8 @@
     },
     "toast": {
       "region": "Messages d’état",
-      "dismiss": "Masquer"
+      "dismiss": "Masquer",
+      "dismissAll": "Tout masquer"
     },
     "spinner": {
       "label": "Chargement"

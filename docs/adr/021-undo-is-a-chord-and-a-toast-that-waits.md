@@ -55,5 +55,10 @@ needed.
   mounted.
 - Undo offers now accumulate on screen until acted on or dismissed. Acceptable: triage raises at most
   one per action and each carries its own Dismiss.
+  **Amended 2026-10-28:** "acceptable" did not survive real use — trashing a handful of messages left
+  a handful of toasts, each needing its own click. The answer is **not** a timer (that is the
+  2.2.1 failure this ADR exists to remove) but a **"Dismiss all"** button, shown from two toasts on
+  and placed outside the live regions so it is not announced. It closes without running any
+  action; Undo stays reachable through `z` for as long as an offer is on screen.
 - Verified by mutation: eight mutations (oldest-first, ignore-action, always-true, no-dismiss, no
   `duration: 0`, always `duration: 0`, silent failure, wrong key) each turn a test red.

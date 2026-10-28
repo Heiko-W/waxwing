@@ -951,7 +951,8 @@
     },
     "toast": {
       "region": "Statusmeldungen",
-      "dismiss": "Verwerfen"
+      "dismiss": "Verwerfen",
+      "dismissAll": "Alle schließen"
     },
     "spinner": {
       "label": "Wird geladen"
