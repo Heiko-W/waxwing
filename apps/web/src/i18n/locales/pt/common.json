@@ -1694,6 +1694,9 @@
     "enable": {
       "label": "Notificar-me de e-mail novo"
     },
+    "badge": {
+      "hint": "Mostra também o número de mensagens por ler na sua Caixa de entrada no ícone do {{product}}, desde que esteja instalado como aplicação e as definições de notificações do sistema o permitam."
+    },
     "permission": {
       "denied": "O seu navegador está a bloquear as notificações deste site. Permita-as nas definições do site no navegador e recarregue o {{product}}.",
       "dismissed": "As notificações não foram permitidas. Volte a ligar o interruptor para lhe ser perguntado outra vez.",

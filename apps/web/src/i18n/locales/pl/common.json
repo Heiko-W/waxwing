@@ -1712,6 +1712,9 @@
     "enable": {
       "label": "Powiadamiaj mnie o nowej poczcie"
     },
+    "badge": {
+      "hint": "Pokazuje też liczbę nieprzeczytanych wiadomości w folderze Odebrane na ikonie {{product}}, o ile aplikacja jest zainstalowana, a ustawienia powiadomień systemu na to pozwalają."
+    },
     "permission": {
       "denied": "Twoja przeglądarka blokuje powiadomienia dla tej witryny. Zezwól na nie w ustawieniach witryny w przeglądarce, a następnie przeładuj aplikację {{product}}.",
       "dismissed": "Nie zezwolono na powiadomienia. Włącz przełącznik ponownie, aby pytanie pojawiło się jeszcze raz.",

@@ -1694,6 +1694,9 @@
     "enable": {
       "label": "Avvisami quando arriva nuova posta"
     },
+    "badge": {
+      "hint": "Mostra anche il numero di messaggi non letti della tua Posta in arrivo sull’icona di {{product}}, a patto che sia installato come app e che le impostazioni di notifica del sistema lo consentano."
+    },
     "permission": {
       "denied": "Il tuo browser blocca le notifiche per questo sito. Consentile nelle impostazioni del sito e poi ricarica {{product}}.",
       "dismissed": "Le notifiche non sono state consentite. Riattiva l’interruttore per farti chiedere di nuovo.",

@@ -1662,6 +1662,9 @@
     "enable": {
       "label": "Notify me about new mail"
     },
+    "badge": {
+      "hint": "This also shows the number of unread messages in your Inbox on the {{product}} app icon, provided it is installed as an app and your system’s notification settings allow it."
+    },
     "permission": {
       "denied": "Your browser is blocking notifications for this site. Allow them in your browser’s site settings, then reload {{product}}.",
       "dismissed": "Notifications were not allowed. Turn the switch on again to be asked once more.",

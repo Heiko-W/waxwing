@@ -287,6 +287,12 @@ test.describe('M3.7 settings suite', () => {
     )
     // The dead string from before M4.0. Its reinstatement would be a lie in the other direction.
     await expect(notifications).not.toContainText('does not deliver them yet')
+
+    // The same switch drives the unread count on the app icon (`use-app-badge.ts`). Headless Chromium
+    // blocks notifications (the denied note above says so), and a blocked permission means no badge
+    // either — so the section must NOT promise one here. The positive half (permission granted, API
+    // present) is pinned in jsdom, where both can be set.
+    await expect(notifications).not.toContainText('app icon')
   })
 
   test('the quota bar reflects the account allowance (FR-QTA-01)', async ({ page }) => {

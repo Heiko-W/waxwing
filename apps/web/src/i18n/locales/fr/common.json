@@ -1694,6 +1694,9 @@
     "enable": {
       "label": "Me prévenir des nouveaux messages"
     },
+    "badge": {
+      "hint": "Cela affiche aussi le nombre de messages non lus de votre boîte de réception sur l’icône de {{product}}, à condition qu’il soit installé comme app et que les réglages de notifications de votre système l’autorisent."
+    },
     "permission": {
       "denied": "Votre navigateur bloque les notifications pour ce site. Autorisez-les dans les paramètres de site de votre navigateur, puis rechargez {{product}}.",
       "dismissed": "Les notifications n’ont pas été autorisées. Réactivez l’option pour que la question vous soit posée une nouvelle fois.",

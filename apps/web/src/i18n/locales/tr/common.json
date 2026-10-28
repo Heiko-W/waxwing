@@ -1662,6 +1662,9 @@
     "enable": {
       "label": "Yeni postaları bana bildir"
     },
+    "badge": {
+      "hint": "Ayrıca Gelen Kutusu’ndaki okunmamış ileti sayısını {{product}} uygulama simgesinde gösterir; bunun için uygulamanın yüklü olması ve sisteminizin bildirim ayarlarının buna izin vermesi gerekir."
+    },
     "permission": {
       "denied": "Tarayıcınız bu site için bildirimleri engelliyor. Tarayıcınızın site ayarlarından izin verin, ardından {{product}} uygulamasını yeniden yükleyin.",
       "dismissed": "Bildirimlere izin verilmedi. Bir kez daha sorulması için anahtarı yeniden açın.",

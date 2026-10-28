@@ -1662,6 +1662,9 @@
     "enable": {
       "label": "Über neue E-Mails benachrichtigen"
     },
+    "badge": {
+      "hint": "Damit erscheint auch die Zahl der ungelesenen Nachrichten in Ihrem Posteingang am App-Symbol von {{product}}, sofern es als App installiert ist und die Mitteilungs-Einstellungen Ihres Systems das erlauben."
+    },
     "permission": {
       "denied": "Ihr Browser blockiert Mitteilungen für diese Seite. Erlauben Sie sie in den Website-Einstellungen Ihres Browsers und laden Sie {{product}} neu.",
       "dismissed": "Mitteilungen wurden nicht erlaubt. Schalten Sie den Schalter erneut ein, um noch einmal gefragt zu werden.",
