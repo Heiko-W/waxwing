@@ -1694,6 +1694,9 @@
     "enable": {
       "label": "Avisarme del correo nuevo"
     },
+    "badge": {
+      "hint": "También muestra el número de mensajes sin leer de su Bandeja de entrada en el icono de {{product}}, siempre que esté instalado como aplicación y los ajustes de notificaciones del sistema lo permitan."
+    },
     "permission": {
       "denied": "Su navegador está bloqueando las notificaciones de este sitio. Permítalas en los ajustes del sitio de su navegador y vuelva a cargar {{product}}.",
       "dismissed": "No se permitieron las notificaciones. Vuelva a activar el interruptor para que se le pregunte otra vez.",

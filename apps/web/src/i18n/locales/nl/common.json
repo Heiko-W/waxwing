@@ -1670,6 +1670,9 @@
     "enable": {
       "label": "Waarschuw me bij nieuwe e-mail"
     },
+    "badge": {
+      "hint": "Toont ook het aantal ongelezen berichten in je Postvak IN op het pictogram van {{product}}, mits de app is geïnstalleerd en de meldingsinstellingen van je systeem dat toestaan."
+    },
     "permission": {
       "denied": "Je browser blokkeert meldingen voor deze site. Sta ze toe in de site-instellingen van je browser en herlaad {{product}} daarna.",
       "dismissed": "Meldingen zijn niet toegestaan. Zet de schakelaar weer aan om opnieuw te worden gevraagd.",

@@ -6,7 +6,7 @@
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '../app/config'
 import { ConfigProvider } from '../app/config-context'
 import {
@@ -369,6 +369,64 @@ describe('NotificationsSection — the honest capability note (ADR-010)', () => 
   it('shows the note whatever the switch says — it is a fact about the SERVER, not a setting', async () => {
     renderSection({ permission: permissionApi('denied'), backgroundPush: false })
     expect(screen.getByText(/not available with this server/i)).toBeInTheDocument()
+  })
+})
+
+/**
+ * The unread count on the app icon is driven by the master switch (`use-app-badge.ts`), and until
+ * this note nothing on screen said so. It must appear only where it is true: a browser without the
+ * Badging API, or a blocked permission, would be promised something that cannot happen.
+ */
+describe('NotificationsSection — app icon badge note', () => {
+  const NOTE = /number of unread messages in your inbox on the .* app icon/i
+
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'setAppBadge')
+  })
+
+  function withBadging(): void {
+    Object.defineProperty(navigator, 'setAppBadge', {
+      configurable: true,
+      value: async () => {},
+    })
+  }
+
+  it('says the switch also drives the icon badge, and ties the sentence to the switch', () => {
+    withBadging()
+    renderSection({ permission: permissionApi('default') })
+
+    const note = screen.getByText(NOTE)
+    expect(masterSwitch().getAttribute('aria-describedby')?.split(' ')).toContain(note.id)
+  })
+
+  it('keeps the permission note attached too — a second description must not drop the first', async () => {
+    withBadging()
+    // A prompt that is dismissed rather than answered leaves the permission at `default` and raises
+    // the section's own "not allowed" note.
+    renderSection({ permission: permissionApi('default', async () => 'default') })
+    await userEvent.click(masterSwitch())
+
+    const dismissed = await screen.findByText(/notifications were not allowed/i)
+    const badge = screen.getByText(NOTE)
+    const described = masterSwitch().getAttribute('aria-describedby')?.split(' ')
+    expect(described).toEqual(expect.arrayContaining([dismissed.id, badge.id]))
+  })
+
+  it('stays silent in a browser without the Badging API', () => {
+    renderSection({ permission: permissionApi('default') })
+    expect(screen.queryByText(NOTE)).toBeNull()
+  })
+
+  it('stays silent while the permission is blocked — no badge can be shown then either', () => {
+    withBadging()
+    renderSection({ permission: permissionApi('denied') })
+    expect(screen.queryByText(NOTE)).toBeNull()
+  })
+
+  it('stays silent where notifications are unsupported altogether', () => {
+    withBadging()
+    renderSection({ permission: permissionApi('unsupported') })
+    expect(screen.queryByText(NOTE)).toBeNull()
   })
 })
 

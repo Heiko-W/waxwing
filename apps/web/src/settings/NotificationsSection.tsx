@@ -23,6 +23,7 @@ import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useConfig } from '../app/config-context'
 import {
+  badgingSupported,
   DEFAULT_NOTIFICATION_PREFS,
   DEFAULT_QUIET_HOURS,
   minutesToTimeValue,
@@ -228,6 +229,22 @@ export function NotificationsSection(props: NotificationsSectionProps) {
         ? t('notify.permission.dismissed')
         : null
 
+  /**
+   * The unread count on the app icon is driven by THIS switch (`use-app-badge.ts` follows the master
+   * switch: a reader who turned notifications off did not ask to be counted at either), and nothing
+   * on screen said so — the badge looked like a feature that did not exist. Said only where the
+   * browser has the Badging API at all (Firefox would be promised something it cannot do) and while
+   * the switch can still be turned on — a blocked permission means no badge either.
+   */
+  const badgeNote =
+    supported && !blocked && badgingSupported() ? t('notify.badge.hint', { product }) : null
+  const enableDescribedBy = [
+    stateNote === null ? null : `${ids.enable}-note`,
+    badgeNote === null ? null : `${ids.enable}-badge`,
+  ]
+    .filter((id) => id !== null)
+    .join(' ')
+
   // Rows, not a card: `Section` wraps whatever a section returns in the one `.controls` there is.
   return (
     <>
@@ -240,12 +257,17 @@ export function NotificationsSection(props: NotificationsSectionProps) {
           checked={prefs.enabled && permission.state === 'granted'}
           disabled={!supported || blocked}
           label={t('notify.enable.label')}
-          {...(stateNote === null ? {} : { 'aria-describedby': `${ids.enable}-note` })}
+          {...(enableDescribedBy === '' ? {} : { 'aria-describedby': enableDescribedBy })}
           onCheckedChange={(next) => void toggleEnabled(next)}
         />
         {stateNote !== null && (
           <p id={`${ids.enable}-note`} className={styles.hint}>
             {stateNote}
+          </p>
+        )}
+        {badgeNote !== null && (
+          <p id={`${ids.enable}-badge`} className={styles.hint}>
+            {badgeNote}
           </p>
         )}
       </div>

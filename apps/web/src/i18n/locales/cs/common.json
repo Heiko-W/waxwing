@@ -1713,6 +1713,9 @@
     "enable": {
       "label": "Upozorňovat na novou poštu"
     },
+    "badge": {
+      "hint": "Zobrazí také počet nepřečtených zpráv v Doručené poště na ikoně {{product}}, pokud je nainstalován jako aplikace a nastavení oznámení systému to umožňuje."
+    },
     "permission": {
       "denied": "Váš prohlížeč pro tuto stránku oznámení blokuje. Povolte je v nastavení webů svého prohlížeče a poté {{product}} načtěte znovu.",
       "dismissed": "Oznámení nebyla povolena. Zapněte přepínač znovu a budete dotázáni ještě jednou.",
