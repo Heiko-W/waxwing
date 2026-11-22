@@ -73,7 +73,7 @@ you can check what you are upgrading to:
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing                       # arrived intact
 gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
-  --source-ref refs/tags/v0.26.1                               # built here, from THAT TAG
+  --source-ref refs/tags/v0.26.2                               # built here, from THAT TAG
 ```
 
 `--ignore-missing` because `SHA256SUMS` lists all three artefacts and you downloaded one;
@@ -109,13 +109,21 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.26.1 — feature-complete, and deliberately not 1.0 yet.**
+**v0.26.2 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: 6 053 unit tests, 20
-integration tests against a live Stalwart, and 259 end-to-end tests (two more skipped) across the
+Every planned work package is done and the release gate is signed off: 6 071 unit tests, 20
+integration tests against a live Stalwart, and 261 end-to-end tests (two more skipped) across the
 **seven** Playwright suites the gate runs, on Stalwart 1.0; the CI runs the same suites against
 0.16.27 as well. Performance and accessibility are measured rather than asserted — the numbers are
 in the [implementation plan](docs/implementation-plan.md).
+
+**v0.26.2 files a message sent as a group address in the group's Sent folder.** A member of a
+shared mailbox (a Stalwart group such as `info@`) who sent as that address got the copy in their
+personal Sent, so the other members never saw what went out under the shared address
+([#101](https://github.com/Heiko-W/waxwing/issues/101)). Waxwing now moves the sent copy into the
+group's Sent after a successful send; if that fails, the mail is still sent, the copy stays in the
+personal Sent and a notice says so. Not for scheduled sends, and not for aliases of the group
+([ADR-049](docs/adr/049-a-group-send-is-filed-in-the-group-sent.md)).
 
 **v0.26.1 is two small fixes from daily use.** Triage stacks Undo toasts, which by design
 ([ADR-021](docs/adr/021-undo-is-a-chord-and-a-toast-that-waits.md)) never expire; from two of them
