@@ -1604,7 +1604,8 @@
       "tooLarge": "That’s too large for the server.",
       "invalid": "The server rejected that change.",
       "stateConflict": "Someone else changed that at the same time.",
-      "serverRejected": "The server rejected that change."
+      "serverRejected": "The server rejected that change.",
+      "sentCopyNotFiled": "Sent — but the copy couldn’t be filed in the shared Sent folder. It’s in your own Sent folder."
     },
     "send": {
       "willSendWhenOnline": "Will send when you’re back online",

@@ -135,6 +135,10 @@ export function classifySetError(intentKind: IntentKind, error: PortSetError): R
 
     case SetErrorTypes.notFound:
       if (isDestroy(intentKind)) return { kind: 'satisfied' }
+      // The original is no longer in the personal Sent: an earlier attempt moved it and its answer
+      // was lost, or the user deleted it meanwhile. Either way there is nothing left to file
+      // (ADR-049) — and a notice about a message that is not there could not be acted on.
+      if (intentKind === 'fileSentCopy') return { kind: 'satisfied' }
       if (isContainerIntent(intentKind)) return conflict('folderGone', detail)
       // An `update` to a card that was deleted elsewhere: a "gone" notice with its own noun, not the
       // mail-worded `messageGone`. Non-retryable — retrying the patch could only fail `notFound` again.

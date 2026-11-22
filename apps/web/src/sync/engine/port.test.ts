@@ -541,3 +541,61 @@ describe('createJmapPort', () => {
     expect(result.envelopes.list.map((email) => email.id)).toEqual(['e1', 'e2'])
   })
 })
+
+describe('createJmapPort — moveEmailToAccount (issue #101, ADR-049)', () => {
+  const args = {
+    creationId: 'sentcopy-d1',
+    emailId: 'sent-1',
+    toAccountId: 'grp',
+    mailboxIds: { 'grp-sent': true },
+    keywords: { $seen: true },
+  }
+  const copyAnswer = (over: Record<string, unknown>) =>
+    fakeClient(() => ({
+      fromAccountId: ACC,
+      accountId: 'grp',
+      oldState: 's1',
+      newState: 's2',
+      ...over,
+    }))
+
+  it('sends one Email/copy from this account with onSuccessDestroyOriginal, under a plain key', async () => {
+    const { client, calls } = copyAnswer({ created: { sentcopy: { id: 'grp-1' } } })
+
+    const result = await createJmapPort(client, ACC).moveEmailToAccount(args)
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.methodDef).toBe(Methods.emailCopy)
+    expect(calls[0]?.args).toEqual({
+      fromAccountId: ACC,
+      accountId: 'grp',
+      create: {
+        sentcopy: { id: 'sent-1', mailboxIds: { 'grp-sent': true }, keywords: { $seen: true } },
+      },
+      onSuccessDestroyOriginal: true,
+    })
+    expect(result.created).toEqual({ 'sentcopy-d1': { id: 'grp-1' } })
+  })
+
+  it('reads the single answer whatever key the server echoed it under (Stalwart 0.16)', async () => {
+    // Measured on v0.16.27: the creation key comes back rewritten, e.g. `ab` → `b`.
+    const { client } = copyAnswer({ created: { mangled: { id: 'grp-1' } } })
+    const result = await createJmapPort(client, ACC).moveEmailToAccount(args)
+    expect(result.created).toEqual({ 'sentcopy-d1': { id: 'grp-1' } })
+  })
+
+  it('files a rejection under the caller creation id', async () => {
+    const { client } = copyAnswer({
+      notCreated: { other: { type: 'forbidden', description: null } },
+    })
+    const result = await createJmapPort(client, ACC).moveEmailToAccount(args)
+    expect(result.notCreated['sentcopy-d1']?.type).toBe('forbidden')
+  })
+
+  it('throws (retry) when the server answers neither created nor notCreated', async () => {
+    const { client } = copyAnswer({})
+    await expect(createJmapPort(client, ACC).moveEmailToAccount(args)).rejects.toThrow(
+      'neither created nor notCreated',
+    )
+  })
+})

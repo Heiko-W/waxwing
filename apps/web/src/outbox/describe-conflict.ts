@@ -66,6 +66,17 @@ export function describeConflict(
     return { titleKey: TITLE_KEY[code], params: {}, action: 'none' }
   }
 
+  // The mail WAS sent; only filing it into the group's Sent failed (issue #101, ADR-049). Whatever
+  // the server's reason, the user needs the same two facts: the send worked, and the copy is in the
+  // personal Sent folder. The generic "permission" / "rejected" sentences would read as a failed send.
+  if (intent.kind === 'fileSentCopy') {
+    return {
+      titleKey: 'outbox.conflict.sentCopyNotFiled',
+      params: {},
+      action: RETRYABLE.has(code) ? 'retry' : 'dismiss',
+    }
+  }
+
   if (code === 'folderGone' && intent.kind === 'move') {
     const folder = intent.from === null ? undefined : folderNames?.get(intent.from)
     return folder === undefined

@@ -129,3 +129,15 @@ export function clearCalendarEvents(): Promise<void>
  * shared calendar puts the owner's whole account into the grantee's session with every capability.
  */
 export function revokeAllPimShares(): Promise<void>
+
+/** The issue-#101 group account: `team@waxwing.test`, members alice and bob. */
+export const GROUP: { name: string; login: string; members: string[] }
+
+/** The display name of alice's identity for the group address. */
+export const GROUP_IDENTITY_NAME: string
+
+/** Create the group, add alice and bob, give alice an identity for the group address. Idempotent. */
+export function ensureGroup(): Promise<{ groupId: string }>
+
+/** Drop the memberships and alice's group identity again (the group and its mail stay). */
+export function removeGroup(): Promise<void>

@@ -269,6 +269,9 @@ function fakePort(script: PortScript): JmapPort & { setEmailsCalls: unknown[] } 
     async submitEmail() {
       return emptySet()
     },
+    async moveEmailToAccount() {
+      return emptySet()
+    },
     async getSearchSnippets() {
       return { list: [], notFound: [] }
     },

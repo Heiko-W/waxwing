@@ -1611,7 +1611,8 @@
       "tooLarge": "Dat is te groot voor de server.",
       "invalid": "De server heeft die wijziging geweigerd.",
       "stateConflict": "Iemand anders heeft dat tegelijkertijd gewijzigd.",
-      "serverRejected": "De server heeft die wijziging geweigerd."
+      "serverRejected": "De server heeft die wijziging geweigerd.",
+      "sentCopyNotFiled": "Verzonden — maar de kopie kon niet in de gedeelde map ‘Verzonden’ worden opgeslagen. Ze staat in je eigen map ‘Verzonden’."
     },
     "send": {
       "willSendWhenOnline": "Wordt verzonden zodra je weer online bent",

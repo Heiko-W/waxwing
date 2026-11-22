@@ -1636,7 +1636,8 @@
       "tooLarge": "C’est trop volumineux pour le serveur.",
       "invalid": "Le serveur a rejeté cette modification.",
       "stateConflict": "Quelqu’un d’autre l’a modifié en même temps.",
-      "serverRejected": "Le serveur a refusé cette modification."
+      "serverRejected": "Le serveur a refusé cette modification.",
+      "sentCopyNotFiled": "Envoyé — mais la copie n’a pas pu être classée dans le dossier « Envoyés » partagé. Elle se trouve dans votre propre dossier « Envoyés »."
     },
     "send": {
       "willSendWhenOnline": "Sera envoyé dès votre retour en ligne",

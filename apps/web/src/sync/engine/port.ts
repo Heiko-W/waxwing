@@ -409,6 +409,49 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
       }
     },
 
+    async moveEmailToAccount(args): Promise<PortSetResult> {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.emailCopy, {
+        fromAccountId: accountId,
+        accountId: args.toAccountId,
+        // A FIXED wire key, not `args.creationId` (ADR-049). Stalwart 0.16 reads an `Email/copy`
+        // creation id as if it were an object id: measured on v0.16.27, `ab` comes back as `b`, and
+        // any id with a `-`, `_` or digit vanishes — no `created`, no `notCreated`, no copy. A plain
+        // lower-case word survives both 0.16 and 1.0, and one create per request needs no other.
+        create: {
+          [COPY_WIRE_KEY]: {
+            id: args.emailId,
+            mailboxIds: args.mailboxIds,
+            keywords: args.keywords,
+          },
+        },
+        onSuccessDestroyOriginal: true,
+      })
+      const response = (await builder.send()).get(handle)
+      // ONE create went out, so whichever single entry came back is its answer — read it without
+      // trusting the key, then file it under the caller's creation id.
+      const created = Object.values(response.created ?? {})[0]
+      const notCreated = Object.values(response.notCreated ?? {})[0]
+      if (created === undefined && notCreated === undefined) {
+        // Neither is an answer: the server said nothing about the copy. Treating that as success
+        // would drop the move silently, which is exactly what 0.16 did before the key above. Thrown,
+        // it is retried with backoff like any unproven failure (conflict.ts rule 2).
+        throw new Error('Email/copy answered with neither created nor notCreated')
+      }
+      // The copy has no update/destroy half of its own; the implicit destroy of the original is a
+      // separate `Email/set` response, deliberately not read (see the port contract).
+      return toSetResult({
+        oldState: response.oldState,
+        newState: response.newState,
+        created: created === undefined ? null : { [args.creationId]: created },
+        notCreated: notCreated === undefined ? null : { [args.creationId]: notCreated },
+        updated: null,
+        destroyed: null,
+        notUpdated: null,
+        notDestroyed: null,
+      })
+    },
+
     // ── Contacts (M4.2, RFC 9610) ────────────────────────────────────────────────────────────
 
     async getAddressBooks(ids) {
@@ -714,6 +757,9 @@ async function changesOrReload(
 }
 
 /** Wire `SetResponse` (nullable maps) → the normalized {@link PortSetResult}. */
+/** The creation key of the one-message `Email/copy` (see `moveEmailToAccount`). */
+const COPY_WIRE_KEY = 'sentcopy'
+
 function toSetResult(response: {
   oldState: string | null
   newState: string
