@@ -376,6 +376,7 @@ class FakeServer {
       setEmails: async (args) => guard(() => this.afterApply('setEmails', this.setEmails(args))),
       setMailboxes: async () => guard(() => this.emptySet()),
       submitEmail: async (args) => guard(() => this.afterApply('submitEmail', this.submit(args))),
+      moveEmailToAccount: async () => guard(() => this.emptySet()),
       // Contacts (M4.2): empty-but-online no-ops that respect the flapping-connection guard, so a delta
       // pass that now also pulls contacts behaves exactly as before under the chaos harness.
       getAddressBooks: async () => guard(() => ({ list: [], notFound: [], state: 'abk' })),

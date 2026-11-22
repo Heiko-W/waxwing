@@ -1654,7 +1654,8 @@
       "tooLarge": "To je pro server příliš velké.",
       "invalid": "Server tuto změnu odmítl.",
       "stateConflict": "Někdo jiný to změnil ve stejnou chvíli.",
-      "serverRejected": "Server tuto změnu odmítl."
+      "serverRejected": "Server tuto změnu odmítl.",
+      "sentCopyNotFiled": "Odesláno, ale kopii se nepodařilo uložit do sdílené složky „Odeslaná pošta“. Je ve vaší vlastní složce „Odeslaná pošta“."
     },
     "send": {
       "willSendWhenOnline": "Odešle se, až budete zase online",

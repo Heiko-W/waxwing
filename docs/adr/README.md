@@ -75,6 +75,7 @@ Format: lightweight [MADR](https://adr.github.io/madr/), one page maximum.
 | [046](046-a-shared-account-syncs-what-it-serves-not-what-it-advertises.md) | A shared account syncs what it serves, not what it advertises | accepted |
 | [047](047-the-calendar-merges-accounts-the-rails-do-not.md) | The calendar merges accounts; the other rails do not | accepted |
 | [048](048-stalwart-1-0-is-a-second-baseline.md) | Stalwart 1.0 is a second baseline, and the seam translates | accepted |
+| [049](049-a-group-send-is-filed-in-the-group-sent.md) | A message sent as a group address is filed in the group's Sent, by the client | accepted |
 
 Regenerate this table after adding an ADR — it is written by hand, and a missing row is the
 kind of omission nobody notices.

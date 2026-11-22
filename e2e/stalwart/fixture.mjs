@@ -1050,6 +1050,107 @@ export async function revokeAllPimShares() {
   }
 }
 
+/**
+ * The group account of the issue-#101 tests: a Stalwart `Group` principal with its own mailbox and
+ * address (`team@waxwing.test`), whose members are alice and bob.
+ */
+export const GROUP = { name: 'team', login: `team@${DOMAIN}`, members: ['alice', 'bob'] }
+
+/** The display name of the identity {@link ensureGroup} gives alice for the group address. */
+export const GROUP_IDENTITY_NAME = 'Team (Waxwing e2e)'
+
+const IDENTITY_USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:submission']
+
+/**
+ * Create the group (idempotent), make alice and bob members, and give ALICE an identity for the
+ * group address — the setup a shared `info@` mailbox has in production (issue #101).
+ *
+ * Membership is what puts the group's account into a member's session, with full rights on its
+ * mailboxes; it is never granted by a share. Like a share it reshapes the member's sidebar into
+ * account-grouped sections, so it is opt-in and {@link removeGroup} undoes it.
+ *
+ * Measured on v1.0.0: a member's `Identity/set` accepts the group address, and the group account
+ * is in the session under `name: "team@waxwing.test"`, `isPersonal: false`.
+ */
+export async function ensureGroup() {
+  const domainId = await queryFirstId('Domain', { name: DOMAIN })
+  if (!domainId) throw new Error(`domain ${DOMAIN} missing — run provision() first`)
+  let groupId = await queryFirstId('Account', { name: GROUP.name })
+  if (!groupId) {
+    const args = await jmap([
+      [
+        'x:Account/set',
+        {
+          create: {
+            g: {
+              '@type': 'Group',
+              name: GROUP.name,
+              domainId,
+              description: 'Team (Waxwing e2e)',
+            },
+          },
+        },
+        '0',
+      ],
+    ])
+    groupId = args.created?.g?.id
+    if (!groupId) throw new Error(`group not created: ${JSON.stringify(args.notCreated)}`)
+  }
+  const update = {}
+  for (const member of GROUP.members) {
+    const id = await queryFirstId('Account', { name: member })
+    if (!id) throw new Error(`member ${member} missing`)
+    update[id] = { [`memberGroupIds/${groupId}`]: true }
+  }
+  const args = await jmap([['x:Account/set', { update }, '0']])
+  if (isNonEmptyObject(args.notUpdated)) {
+    throw new Error(`group membership rejected: ${JSON.stringify(args.notUpdated)}`)
+  }
+
+  const alice = accountNamed('alice')
+  const accountId = await ownAccountId(alice)
+  const identities = await jmapAs(alice, IDENTITY_USING, [['Identity/get', { accountId }, '0']])
+  if (!(identities.list ?? []).some((identity) => identity.email === GROUP.login)) {
+    const created = await jmapAs(alice, IDENTITY_USING, [
+      [
+        'Identity/set',
+        { accountId, create: { t: { name: GROUP_IDENTITY_NAME, email: GROUP.login } } },
+        '0',
+      ],
+    ])
+    if (!created.created?.t) {
+      throw new Error(`group identity rejected: ${JSON.stringify(created.notCreated)}`)
+    }
+  }
+  return { groupId }
+}
+
+/**
+ * Undo {@link ensureGroup}'s effect on the members: drop the memberships and alice's group identity,
+ * so later suites see single-account sessions again. The group itself and its mail stay (it is
+ * invisible to non-members), which keeps this cheap and idempotent.
+ */
+export async function removeGroup() {
+  const groupId = await queryFirstId('Account', { name: GROUP.name })
+  if (groupId) {
+    const update = {}
+    for (const member of GROUP.members) {
+      const id = await queryFirstId('Account', { name: member })
+      if (id) update[id] = { [`memberGroupIds/${groupId}`]: null }
+    }
+    await jmap([['x:Account/set', { update }, '0']])
+  }
+  const alice = accountNamed('alice')
+  const accountId = await ownAccountId(alice)
+  const identities = await jmapAs(alice, IDENTITY_USING, [['Identity/get', { accountId }, '0']])
+  const ids = (identities.list ?? [])
+    .filter((identity) => identity.email === GROUP.login)
+    .map((identity) => identity.id)
+  if (ids.length > 0) {
+    await jmapAs(alice, IDENTITY_USING, [['Identity/set', { accountId, destroy: ids }, '0']])
+  }
+}
+
 /** Withdraw every share (`shareWith: {}`), returning the fixture to its single-account default. */
 export async function revokeDelegations() {
   for (const { owner } of DELEGATIONS) {

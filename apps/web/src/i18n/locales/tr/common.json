@@ -1604,7 +1604,8 @@
       "tooLarge": "Bu, sunucu için fazla büyük.",
       "invalid": "Sunucu bu değişikliği reddetti.",
       "stateConflict": "Aynı anda başka biri de bunu değiştirdi.",
-      "serverRejected": "Sunucu bu değişikliği reddetti."
+      "serverRejected": "Sunucu bu değişikliği reddetti.",
+      "sentCopyNotFiled": "Gönderildi, ancak kopya paylaşılan “Gönderilenler” klasörüne kaydedilemedi. Kopya kendi “Gönderilenler” klasörünüzde."
     },
     "send": {
       "willSendWhenOnline": "Yeniden çevrimiçi olduğunuzda gönderilecek",

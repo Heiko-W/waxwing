@@ -1654,7 +1654,8 @@
       "tooLarge": "To jest za duże dla serwera.",
       "invalid": "Serwer odrzucił tę zmianę.",
       "stateConflict": "Ktoś inny zmienił to w tym samym czasie.",
-      "serverRejected": "Serwer odrzucił tę zmianę."
+      "serverRejected": "Serwer odrzucił tę zmianę.",
+      "sentCopyNotFiled": "Wysłano, ale nie udało się zapisać kopii we wspólnym folderze „Wysłane”. Znajduje się w Twoim własnym folderze „Wysłane”."
     },
     "send": {
       "willSendWhenOnline": "Zostanie wysłana po powrocie do trybu online",

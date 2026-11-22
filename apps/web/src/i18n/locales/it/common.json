@@ -1636,7 +1636,8 @@
       "tooLarge": "È troppo grande per il server.",
       "invalid": "Il server ha rifiutato quella modifica.",
       "stateConflict": "Qualcun altro l’ha modificato nello stesso momento.",
-      "serverRejected": "Il server ha rifiutato quella modifica."
+      "serverRejected": "Il server ha rifiutato quella modifica.",
+      "sentCopyNotFiled": "Inviato, ma non è stato possibile archiviare la copia nella cartella «Posta inviata» condivisa. Si trova nella tua cartella «Posta inviata»."
     },
     "send": {
       "willSendWhenOnline": "Verrà inviato quando tornerai online",

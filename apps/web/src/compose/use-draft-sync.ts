@@ -11,7 +11,7 @@
  * alone, because a save is create-new + destroy-old and would only mint a new id for the same text.
  */
 
-import type { EmailAddress, EmailSubmissionAddress, Id } from '@waxwing/jmap'
+import type { EmailAddress, EmailSubmissionAddress, Id, MailAccount } from '@waxwing/jmap'
 import { useMemo } from 'react'
 import { useSessionOptional } from '../app/session/context'
 import {
@@ -38,6 +38,7 @@ import {
 import { revokeInlineObjectUrls } from './inline-image-registry'
 import { holdUntilParameters } from './scheduled-send'
 import { mailFromParameters, rcptToParameters, readSubmissionExtensions } from './send-options'
+import { sentTargetFor } from './sent-target'
 
 /** Why a send could not start (surfaced by the composer as a toast). */
 export type SendFailure =
@@ -123,6 +124,8 @@ function mergeEnvelopeParameters(
   for (const map of maps) if (map !== null) Object.assign(merged, map)
   return Object.keys(merged).length > 0 ? merged : null
 }
+
+const NO_ACCOUNTS: readonly MailAccount[] = []
 
 /** Autosave/discard share this id (a later save coalesces over an earlier one). */
 const outboxId = (localId: string): string => `draft:${localId}`
@@ -291,6 +294,9 @@ export function useDraftSync(): DraftSync {
   const connected = useSessionOptional()
   const jmapSession = connected?.jmapSession ?? null
   const sessionAccountId = connected?.accountId ?? null
+  // Every mail account the session can see — read only to find a GROUP account whose address the
+  // message is sent from, so its sent copy can be filed there (issue #101). Absent session: none.
+  const mailAccounts = connected?.accounts ?? NO_ACCOUNTS
   // What this account may be ASKED for. Absent session (unit tests, pre-connect) reads as "no
   // extensions", which makes every envelope identical to the one sent before M-7 existed — the
   // send path must never become dependent on a capability document having arrived.
@@ -368,6 +374,14 @@ export function useDraftSync(): DraftSync {
         // Also covers "no engine serves this account" — refusing a send is exactly right there.
         const engine = getEngineFor(accountId)
         if (engine === null) return { ok: false, reason: 'engineUnavailable' }
+        // Sent as a group address ⇒ the copy belongs in the group's Sent (issue #101). Not for a
+        // SCHEDULED send: the server is still holding that message, and filing it as "sent" in a
+        // folder the whole team reads would claim a delivery that has not happened — moving it
+        // would also take it out from under the Scheduled list, which reads it from this account.
+        const fileSentIn =
+          opts.scheduleAt === undefined
+            ? await sentTargetFor(db, mailAccounts, accountId, identity.email)
+            : null
 
         const content = serializeDraft(draft)
         const existing = await getDraft(db, accountId, localId)
@@ -460,6 +474,7 @@ export function useDraftSync(): DraftSync {
                 'keywords/$seen': true,
               },
               source,
+              fileSentIn,
             },
             { id: sendOutboxId(localId), notBefore: opts.undoMs > 0 ? now + opts.undoMs : null },
           )
@@ -490,5 +505,5 @@ export function useDraftSync(): DraftSync {
         }
       },
     }
-  }, [replica, extensions])
+  }, [replica, extensions, mailAccounts])
 }

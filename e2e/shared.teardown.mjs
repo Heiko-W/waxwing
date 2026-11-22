@@ -11,11 +11,17 @@ import {
   clearCalendarEvents,
   clearShareNotifications,
   down,
+  removeGroup,
   revokeAllPimShares,
   revokeAllShares,
 } from './stalwart/fixture.mjs'
 
 export default async function globalTeardown() {
+  // Issue #101's group membership puts the group account into alice's and bob's sessions — the same
+  // sidebar reshaping as a share. The spec removes it in `afterAll`; this catches an aborted run.
+  await removeGroup().catch((error) => {
+    console.warn(`[shared.teardown] group removal failed: ${error?.message ?? error}`)
+  })
   // `revokeAllShares` rather than `revokeDelegations`: the S-3 tests grant a share through the UI,
   // from alice's account and on a folder of their choosing, and the fixed DELEGATIONS list knows
   // nothing about it. One left behind reshapes a later suite's sidebar into account-grouped

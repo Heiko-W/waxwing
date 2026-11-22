@@ -268,6 +268,9 @@ function fakePort(accountId: string, emails: string[]): JmapPort {
     async submitEmail() {
       return emptySet()
     },
+    async moveEmailToAccount() {
+      return emptySet()
+    },
     async getSearchSnippets() {
       return { list: [], notFound: [] }
     },

@@ -67,6 +67,8 @@ import type {
 import type {
   EmailChangesRequest,
   EmailChangesResponse,
+  EmailCopyRequest,
+  EmailCopyResponse,
   EmailGetRequest,
   EmailGetResponse,
   EmailImportRequest,
@@ -188,6 +190,11 @@ export const Methods = {
   ),
   emailSet: defineMethod<EmailSetRequest, EmailSetResponse>('Email/set'),
   emailParse: defineMethod<EmailParseRequest, EmailParseResponse>('Email/parse'),
+  /**
+   * RFC 8621 §4.7 — copy messages between accounts; with `onSuccessDestroyOriginal` a move. Used to
+   * file a message sent under a group address into the group's Sent folder (issue #101).
+   */
+  emailCopy: defineMethod<EmailCopyRequest, EmailCopyResponse>('Email/copy'),
   /**
    * RFC 8621 §4.8 — file an uploaded RFC 5322 blob into mailboxes (M5.3).
    *

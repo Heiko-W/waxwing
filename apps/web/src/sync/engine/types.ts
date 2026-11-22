@@ -223,6 +223,22 @@ export interface JmapPort {
     sourceUpdate?: { id: Id; patch: PatchObject } | null
     ifInState?: string | null
   }): Promise<PortSetResult>
+  /**
+   * MOVE one of this account's messages into another account (issue #101): `Email/copy` from this
+   * account into `toAccountId` with `onSuccessDestroyOriginal`, so the original goes once the copy
+   * exists. Used to file a message sent under a group address into the group's Sent folder.
+   *
+   * The result is the COPY's outcome, keyed by `creationId` (`created`/`notCreated`); whether the
+   * implicit destroy of the original succeeded is not reported — a refused destroy leaves the
+   * message in both places, which is a duplicate, not a loss.
+   */
+  moveEmailToAccount(args: {
+    creationId: string
+    emailId: Id
+    toAccountId: Id
+    mailboxIds: Record<Id, boolean>
+    keywords: Record<string, boolean>
+  }): Promise<PortSetResult>
 
   // ── Contacts (M4.2, RFC 9610) ──────────────────────────────────────────────────────────────
   // AddressBooks mirror the Mailbox surface (whole-account pull, no `/query`); ContactCards mirror

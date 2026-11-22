@@ -269,7 +269,9 @@ webmail is an open gap.
   covers credentials, not identities.
 - **FR-CMP-07 (Must)** — Sending via `EmailSubmission/set` with proper
   `onSuccessUpdateEmail` (move to Sent, set `$seen`), error surfacing (rejected
-  recipients, quota, size).
+  recipients, quota, size). The sent copy lands in the Sent folder **of the address it was
+  sent from**: sent as a group account's address (a shared `info@`), it is moved into that
+  group's Sent, where every member sees it (issue #101, ADR-049).
 - **FR-CMP-08 (Should)** — **Undo send:** client-side grace period before the submission
   call is fired; a snackbar offers "Undo". The delay is **user-configurable** in settings
   (off / 5 / 15 / 30 s; default 15 s); `config.json` only sets the hoster default

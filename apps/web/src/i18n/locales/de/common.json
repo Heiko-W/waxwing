@@ -1604,7 +1604,8 @@
       "tooLarge": "Zu groß für den Server.",
       "invalid": "Der Server hat die Änderung abgelehnt.",
       "stateConflict": "Jemand anderes hat das gleichzeitig geändert.",
-      "serverRejected": "Der Server hat die Änderung abgelehnt."
+      "serverRejected": "Der Server hat die Änderung abgelehnt.",
+      "sentCopyNotFiled": "Gesendet – aber die Kopie konnte nicht im gemeinsamen Ordner „Gesendet“ abgelegt werden. Sie liegt in Ihrem eigenen Ordner „Gesendet“."
     },
     "send": {
       "willSendWhenOnline": "Wird gesendet, sobald Sie wieder online sind",

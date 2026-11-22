@@ -1579,7 +1579,8 @@
       "tooLarge": "内容对服务器来说太大了。",
       "invalid": "服务器拒绝了此项更改。",
       "stateConflict": "有人在同一时间也修改了它。",
-      "serverRejected": "服务器拒绝了此项更改。"
+      "serverRejected": "服务器拒绝了此项更改。",
+      "sentCopyNotFiled": "已发送，但副本无法存入共享的“已发送”文件夹。副本位于您自己的“已发送”文件夹中。"
     },
     "send": {
       "willSendWhenOnline": "将在您重新联网后发送",

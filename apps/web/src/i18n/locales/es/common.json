@@ -1635,7 +1635,8 @@
       "tooLarge": "Eso es demasiado grande para el servidor.",
       "invalid": "El servidor rechazó ese cambio.",
       "stateConflict": "Otra persona cambió eso al mismo tiempo.",
-      "serverRejected": "El servidor rechazó ese cambio."
+      "serverRejected": "El servidor rechazó ese cambio.",
+      "sentCopyNotFiled": "Enviado, pero la copia no se pudo guardar en la carpeta compartida «Enviados». Está en su propia carpeta «Enviados»."
     },
     "send": {
       "willSendWhenOnline": "Se enviará cuando vuelva a tener conexión",

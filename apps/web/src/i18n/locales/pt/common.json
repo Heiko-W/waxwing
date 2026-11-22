@@ -1636,7 +1636,8 @@
       "tooLarge": "Isso é demasiado grande para o servidor.",
       "invalid": "O servidor rejeitou essa alteração.",
       "stateConflict": "Outra pessoa alterou isso ao mesmo tempo.",
-      "serverRejected": "O servidor rejeitou essa alteração."
+      "serverRejected": "O servidor rejeitou essa alteração.",
+      "sentCopyNotFiled": "Enviado, mas a cópia não pôde ser arquivada na pasta «Enviados» partilhada. Está na sua própria pasta «Enviados»."
     },
     "send": {
       "willSendWhenOnline": "Será enviada quando voltar a estar online",

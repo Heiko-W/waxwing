@@ -56,6 +56,7 @@ function fakePort(overrides: Partial<JmapPort>): JmapPort {
     setEmails: unused,
     setMailboxes: unused,
     submitEmail: unused,
+    moveEmailToAccount: unused,
     getSearchSnippets: unused,
     getAddressBooks: unused,
     addressBookChanges: unused,
@@ -4636,5 +4637,129 @@ describe('outbox — sendEmail (M2.8)', () => {
 
     expect((await db.drafts.get([ACC, 'd1']))?.status).toBe('error') // draft reopens for the user
     expect((await db.emails.get([ACC, 'src-9']))?.keywords).toEqual({}) // source flag rolled back
+  })
+
+  // ── Issue #101: a send under a group address is filed in the GROUP's Sent ─────────────────────
+
+  const groupTarget = { accountId: 'grp', mailboxId: 'grp-sent' }
+
+  it('confirmed group send: queues a move of the sent copy into the group account (#101)', async () => {
+    await db.drafts.put(draftRow())
+    const port = fakePort({
+      submitEmail: async () =>
+        setResult({ created: { 'sub-d1': { id: 'srv-sub' } }, emailCreated: { id: 'sent-1' } }),
+    })
+    await enqueueAction(db, ACC, sendIntent({ source: null, fileSentIn: groupTarget }), {
+      id: 'send:d1',
+      now: 1,
+    })
+
+    const summary = await replayOutbox(port, db, ACC, { now: 1, random: NO_JITTER })
+
+    expect(summary.replayed).toBe(1)
+    expect(summary.failed).toBe(0)
+    expect(await row('send:d1')).toBeUndefined()
+    const followUp = await row('sentcopy:d1')
+    expect(followUp?.status).toBe('pending')
+    expect(followUp?.payload).toEqual({
+      kind: 'fileSentCopy',
+      creationId: 'sentcopy-d1',
+      emailId: 'sent-1',
+      toAccountId: 'grp',
+      toMailboxId: 'grp-sent',
+    })
+
+    // The next pass moves it: Email/copy into the group's Sent, read, original destroyed.
+    let moved: Parameters<JmapPort['moveEmailToAccount']>[0] | undefined
+    const mover = fakePort({
+      moveEmailToAccount: async (args) => {
+        moved = args
+        return setResult({ created: { 'sentcopy-d1': { id: 'grp-1' } } })
+      },
+    })
+    await replayOutbox(mover, db, ACC, { now: 2, random: NO_JITTER })
+    expect(moved).toEqual({
+      creationId: 'sentcopy-d1',
+      emailId: 'sent-1',
+      toAccountId: 'grp',
+      mailboxIds: { 'grp-sent': true },
+      keywords: { $seen: true },
+    })
+    expect(await row('sentcopy:d1')).toBeUndefined()
+  })
+
+  it('confirmed personal send: queues no move (#101)', async () => {
+    await db.drafts.put(draftRow())
+    const port = fakePort({
+      submitEmail: async () =>
+        setResult({ created: { 'sub-d1': { id: 'srv-sub' } }, emailCreated: { id: 'sent-1' } }),
+    })
+    await enqueueAction(db, ACC, sendIntent({ source: null }), { id: 'send:d1', now: 1 })
+
+    await replayOutbox(port, db, ACC, { now: 1, random: NO_JITTER })
+
+    expect(await db.outbox.count()).toBe(0)
+  })
+
+  it('rejected group send: queues no move — nothing was sent (#101)', async () => {
+    await db.drafts.put(draftRow())
+    const port = fakePort({
+      submitEmail: async () =>
+        setResult({
+          notCreated: { 'sub-d1': { type: 'forbiddenFrom' } },
+          emailCreated: { id: 'new-draft' },
+        }),
+    })
+    await enqueueAction(db, ACC, sendIntent({ source: null, fileSentIn: groupTarget }), {
+      id: 'send:d1',
+      now: 1,
+    })
+
+    await replayOutbox(port, db, ACC, { now: 1, random: NO_JITTER })
+
+    expect(await row('sentcopy:d1')).toBeUndefined()
+    expect((await row('send:d1'))?.conflict?.code).toBe('sendRejected')
+  })
+
+  it('a move whose original is already gone (notFound) counts as done (#101)', async () => {
+    const intent: OutboxIntent = {
+      kind: 'fileSentCopy',
+      creationId: 'sentcopy-d1',
+      emailId: 'sent-1',
+      toAccountId: 'grp',
+      toMailboxId: 'grp-sent',
+    }
+    await enqueueAction(db, ACC, intent, { id: 'sentcopy:d1', now: 1 })
+    const port = fakePort({
+      moveEmailToAccount: async () =>
+        setResult({ notCreated: { 'sentcopy-d1': { type: 'notFound' } } }),
+    })
+
+    const summary = await replayOutbox(port, db, ACC, { now: 1, random: NO_JITTER })
+
+    expect(summary.failed).toBe(0)
+    expect(await row('sentcopy:d1')).toBeUndefined()
+  })
+
+  it('a refused move dead-letters on its own row and leaves the send alone (#101)', async () => {
+    const intent: OutboxIntent = {
+      kind: 'fileSentCopy',
+      creationId: 'sentcopy-d1',
+      emailId: 'sent-1',
+      toAccountId: 'grp',
+      toMailboxId: 'grp-sent',
+    }
+    await enqueueAction(db, ACC, intent, { id: 'sentcopy:d1', now: 1 })
+    const port = fakePort({
+      moveEmailToAccount: async () =>
+        setResult({ notCreated: { 'sentcopy-d1': { type: 'forbidden' } } }),
+    })
+
+    const summary = await replayOutbox(port, db, ACC, { now: 1, random: NO_JITTER })
+
+    expect(summary.failed).toBe(1)
+    const dead = await row('sentcopy:d1')
+    expect(dead?.status).toBe('error')
+    expect(dead?.conflict?.code).toBe('forbidden')
   })
 })

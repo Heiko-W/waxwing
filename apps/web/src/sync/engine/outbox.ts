@@ -182,6 +182,26 @@ export type OutboxIntent =
       readonly envelope: Envelope
       readonly onSuccessUpdateEmail: PatchObject
       readonly source: { readonly emailId: Id; readonly keyword: '$answered' | '$forwarded' } | null
+      /**
+       * Where the sent copy finally belongs when that is NOT this account's Sent (issue #101,
+       * ADR-049): the Sent folder of the group account whose address the message was sent from.
+       * Absent/null = today's behaviour, the copy stays in this account's Sent. A confirmed send
+       * queues a {@link OutboxIntent} `fileSentCopy` for it; the send itself never waits on it.
+       */
+      readonly fileSentIn?: { readonly accountId: Id; readonly mailboxId: Id } | null
+    }
+  | {
+      /**
+       * Move a SENT message from this account's Sent into a group account's Sent (issue #101,
+       * ADR-049) — `Email/copy` with `onSuccessDestroyOriginal`. Only ever queued by a confirmed
+       * send, never by the UI. Safe to retry: once the original has moved, a second attempt finds
+       * nothing to copy (`notFound`), which counts as done.
+       */
+      readonly kind: 'fileSentCopy'
+      readonly creationId: string
+      readonly emailId: Id
+      readonly toAccountId: Id
+      readonly toMailboxId: Id
     }
   // ── Contacts (M4.2, RFC 9610) ──────────────────────────────────────────────────────────────
   // A ContactCard is a standalone object with create/update/destroy over `ContactCard/set`, exactly
@@ -1678,6 +1698,9 @@ export async function applyOptimistic(
        */
       return { kind: 'addressBook', id: intent.id, prior }
     }
+    case 'fileSentCopy':
+      // Nothing local to change: the move shows up through both accounts' deltas.
+      return { kind: 'none' }
     case 'saveDraft':
     case 'discardDraft':
       // Drafts are edit-state, not envelope cache: the local `drafts` row is written durably by the
@@ -2201,6 +2224,15 @@ function executeIntent(
           : null,
         ifInState,
       })
+    case 'fileSentCopy':
+      return port.moveEmailToAccount({
+        creationId: intent.creationId,
+        emailId: intent.emailId,
+        toAccountId: intent.toAccountId,
+        mailboxIds: { [intent.toMailboxId]: true },
+        // A sent message is read by definition — the same keyword the send's own refile sets.
+        keywords: { $seen: true },
+      })
   }
 }
 
@@ -2287,6 +2319,9 @@ function rejections(intent: OutboxIntent, result: PortSetResult): Map<string, Po
       // The result is the EmailSubmission/set response — a rejected submission (bad recipient, quota,
       // size) lands in notCreated under the submission creation id.
       collect(result.notCreated, [intent.submissionCreationId])
+      break
+    case 'fileSentCopy':
+      collect(result.notCreated, [intent.creationId])
       break
   }
   return found
@@ -2666,6 +2701,25 @@ async function reconcileSendRemainder(
   if (source !== null && undo !== null && result.emailNotUpdated?.[source.emailId] !== undefined) {
     // The `keywords` undo is a local Dexie write — the arm of `applyUndo` that cannot throw.
     await applyUndo(db, port, accountId, intent, undo, [source.emailId])
+  }
+  const target = intent.fileSentIn ?? null
+  const sent = result.emailCreated ?? null
+  if (target !== null && sent !== null) {
+    // Its OWN row id, not the send's: the send row is about to be deleted, and the discard below may
+    // take that id over. A follow-up that failed to queue is the worst case here and it is a mild
+    // one — the message stays in the personal Sent, exactly where it went before issue #101.
+    await enqueueAction(
+      db,
+      accountId,
+      {
+        kind: 'fileSentCopy',
+        creationId: `sentcopy-${intent.localId}`,
+        emailId: sent.id,
+        toAccountId: target.accountId,
+        toMailboxId: target.mailboxId,
+      },
+      { id: `sentcopy:${intent.localId}`, now },
+    )
   }
   const prior = intent.priorServerId
   if (prior === null) return
@@ -3285,6 +3339,8 @@ function rejectionKeys(intent: OutboxIntent): string[] {
       return [intent.serverEmailId]
     case 'sendEmail':
       return [intent.submissionCreationId]
+    case 'fileSentCopy':
+      return [intent.creationId]
   }
 }
 

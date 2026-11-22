@@ -28,6 +28,9 @@ export default defineConfig({
     '**/sharing.spec.ts',
     '**/sharing-pim.spec.ts',
     '**/delegation.spec.ts',
+    // Issue #101: a group account (alice and bob as members) — membership reshapes the sidebar
+    // exactly like a share, so it lives here and `shared.teardown.mjs` removes it again.
+    '**/group-sent.spec.ts',
   ],
   // One account, stateful mutations across two shared mailboxes — serial, and reseeded per test.
   fullyParallel: false,

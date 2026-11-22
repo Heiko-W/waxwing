@@ -126,3 +126,25 @@ describe('describeConflict', () => {
     })
   })
 })
+
+describe('describeConflict — a group Sent copy that could not be filed (issue #101)', () => {
+  const fileSentCopy: OutboxIntent = {
+    kind: 'fileSentCopy',
+    creationId: 'sentcopy-d1',
+    emailId: 'sent-1',
+    toAccountId: 'grp',
+    toMailboxId: 'grp-sent',
+  }
+
+  it('says the mail was sent and where the copy is — never a generic rejection', () => {
+    expect(describeConflict(row(fileSentCopy, 'forbidden'))).toEqual({
+      titleKey: 'outbox.conflict.sentCopyNotFiled',
+      params: {},
+      action: 'retry',
+    })
+  })
+
+  it('offers no retry for a failure that cannot change', () => {
+    expect(describeConflict(row(fileSentCopy, 'folderGone')).action).toBe('dismiss')
+  })
+})

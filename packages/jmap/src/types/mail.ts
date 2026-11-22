@@ -560,6 +560,48 @@ export interface EmailSetRequest {
 export type EmailSetResponse = SetResponse<Email>
 
 /**
+ * One message to copy (RFC 8621 §4.7, RFC 8620 §5.4): the id of the Email in `fromAccountId`, plus
+ * the properties that may differ in the target account. Everything else (headers, body, blob) is
+ * carried over unchanged, which is what makes a copy cheaper and more faithful than a re-create.
+ */
+export interface EmailCopy {
+  id: Id
+  mailboxIds: Record<Id, boolean>
+  keywords?: Record<string, boolean>
+  receivedAt?: UTCDate
+}
+
+/**
+ * Arguments for `Email/copy` (RFC 8620 §5.4): copy messages from one account into another.
+ *
+ * `onSuccessDestroyOriginal` turns the copy into a move: the server destroys each original whose
+ * copy was created, in an implicit `Email/set` on `fromAccountId` that it answers in the same
+ * response. There is no other way to move a message between accounts.
+ */
+export interface EmailCopyRequest {
+  fromAccountId: Id
+  ifFromInState?: string | null
+  accountId: Id
+  ifInState?: string | null
+  create: Record<CreationId, EmailCopy>
+  onSuccessDestroyOriginal?: boolean
+  destroyFromIfInState?: string | null
+}
+
+/**
+ * Response for `Email/copy`. `notCreated` may carry `alreadyExists` (with `existingId`) and
+ * `notFound` (the original is not in `fromAccountId`).
+ */
+export interface EmailCopyResponse {
+  fromAccountId: Id
+  accountId: Id
+  oldState: string | null
+  newState: string
+  created: Record<CreationId, Email> | null
+  notCreated: Record<CreationId, SetError> | null
+}
+
+/**
  * One message to import (RFC 8621 §4.8).
  *
  * `mailboxIds` is required and must name at least one mailbox: an imported message that belongs to
